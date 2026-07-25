@@ -1443,7 +1443,8 @@ export default function PaymentScreen() {
       if (match && match[1]) {
         const host = match[1];
         if (host.includes("railway") || host.includes("production")) {
-          return "https://demo2026pondy-production.up.railway.app/customer-display";
+          return "https://pos-qr-production-5142.up.railway.app/customer-display";
+
         }
         return `http://${host}:8081/customer-display`;
       }

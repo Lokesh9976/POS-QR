@@ -21,7 +21,8 @@ const localIP = getLocalBackendIP();
 export const API_URL = __DEV__
   ? `http://${localIP}:3000`
   : (process.env.EXPO_PUBLIC_API_URL ??
-    "https://demo2026pondy-production.up.railway.app");
+    "https://pos-qr-production-5142.up.railway.app");
+
 
 if (__DEV__) {
   console.log(`🌐 [Config] API_URL: ${API_URL} | Platform: ${Platform.OS}`);

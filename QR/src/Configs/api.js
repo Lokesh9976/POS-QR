@@ -16,4 +16,5 @@ export const BASE_URL =
   "http://10.190.187.6:3000";        // ← your PC's WiFi IP + backend port
 
 // Production (Railway) fallback — uncomment when deployed:
-// export const BASE_URL = "https://demo2026pondy-production.up.railway.app";
+// export const BASE_URL = "https://pos-qr-production-5142.up.railway.app";
+

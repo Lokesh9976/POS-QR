@@ -11,13 +11,15 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://demo2026pondy-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://pos-qr-production-5142.up.railway.app"
+
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://demo2026pondy-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://pos-qr-production-5142.up.railway.app"
+
       },
       "android": {
         "buildType": "apk"
