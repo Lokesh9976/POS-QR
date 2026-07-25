@@ -1,0 +1,509 @@
+import React, { useState, useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Share,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { Theme } from "../../constants/theme";
+import { API_URL } from "../../constants/Config";
+
+// QR Code via web service — works on all platforms (web + native)
+// Uses qrserver.com free API to generate QR images
+const QR_API = (data: string, size = 200) =>
+  `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(data)}&format=png&margin=10`;
+
+// Resolve the customer-facing base URL for the QR code
+// On web: use current browser's host
+// On native: use the configured API_URL host (same PC)
+function getCustomerBaseUrl(): string {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    const { protocol, hostname, port } = window.location;
+    // Expo web runs on :8081 by default
+    return `${protocol}//${hostname}${port ? `:${port}` : ""}`;
+  }
+  // For native — use same host as API but on port 8081 (Expo web)
+  const apiHost = API_URL.replace(/:\d+$/, ""); // strip port
+  return `${apiHost}:8081`;
+}
+
+interface Table {
+  id: string;
+  label: string;
+  DiningSection: string;
+  Status: number;
+}
+
+const SECTION_NAMES: Record<string, string> = {
+  "1": "SECTION_1",
+  "2": "SECTION_2",
+  "3": "SECTION_3",
+};
+
+export default function QRGeneratorScreen() {
+  const router = useRouter();
+  const [tables, setTables] = useState<Table[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedSection, setSelectedSection] = useState<string>("all");
+  const [baseUrl, setBaseUrl] = useState("");
+
+  useEffect(() => {
+    setBaseUrl(getCustomerBaseUrl());
+    fetchTables();
+  }, []);
+
+  const fetchTables = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/tables/all`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        // Only dine-in tables
+        setTables(data.filter((t: Table) => t.DiningSection !== "4"));
+      }
+    } catch {
+      Alert.alert("Error", "Failed to load tables from database.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const buildQrUrl = (table: Table) => {
+    const sectionName = SECTION_NAMES[table.DiningSection] || "SECTION_1";
+    return `${baseUrl}/customer?tableId=${table.id}&tableNo=${encodeURIComponent(table.label)}&section=${sectionName}`;
+  };
+
+  const sections = ["all", "1", "2", "3"];
+  const sectionLabels: Record<string, string> = {
+    all: "All Tables",
+    "1": "Section 1",
+    "2": "Section 2",
+    "3": "Section 3",
+  };
+
+  const filteredTables =
+    selectedSection === "all"
+      ? tables
+      : tables.filter((t) => t.DiningSection === selectedSection);
+
+  const handleShare = async (table: Table) => {
+    const url = buildQrUrl(table);
+    try {
+      await Share.share({
+        message: `Table ${table.label} QR Link:\n${url}`,
+        title: `Table ${table.label} QR Code`,
+      });
+    } catch {
+      // Sharing not supported, just show the URL
+      Alert.alert("QR Link", url);
+    }
+  };
+
+  const handlePrintAll = () => {
+    if (Platform.OS !== "web") {
+      Alert.alert(
+        "Print QR Codes",
+        "Open this page in a web browser on your PC to print all QR codes."
+      );
+      return;
+    }
+    window.print();
+  };
+
+  return (
+    <View style={styles.root}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={22} color={Theme.textPrimary} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Table QR Codes</Text>
+          <Text style={styles.headerSub}>
+            Print and place on each table for customer ordering
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.printBtn} onPress={handlePrintAll}>
+          <Ionicons name="print-outline" size={18} color="#fff" />
+          <Text style={styles.printBtnText}>Print All</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Info Banner */}
+      <View style={styles.infoBanner}>
+        <Ionicons name="information-circle-outline" size={18} color="#0369a1" />
+        <Text style={styles.infoText}>
+          Customer scans QR → browser opens → auto-sets table → places order
+        </Text>
+      </View>
+
+      {/* Base URL Display */}
+      <View style={styles.urlBanner}>
+        <Ionicons name="link-outline" size={14} color="#6b7280" />
+        <Text style={styles.urlText} numberOfLines={1}>
+          Base URL: {baseUrl}/customer
+        </Text>
+      </View>
+
+      {/* Section Filter */}
+      <View style={styles.filterRow}>
+        {sections.map((sec) => (
+          <TouchableOpacity
+            key={sec}
+            style={[
+              styles.filterChip,
+              selectedSection === sec && styles.filterChipActive,
+            ]}
+            onPress={() => setSelectedSection(sec)}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                selectedSection === sec && styles.filterChipTextActive,
+              ]}
+            >
+              {sectionLabels[sec]}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {loading ? (
+        <ActivityIndicator
+          size="large"
+          color={Theme.primary}
+          style={{ marginTop: 60 }}
+        />
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.grid}
+          showsVerticalScrollIndicator={false}
+        >
+          {filteredTables.map((table) => {
+            const qrUrl = buildQrUrl(table);
+            const qrImgUrl = QR_API(qrUrl, 180);
+            return (
+              <View key={table.id} style={styles.qrCard}>
+                {/* QR Image */}
+                <View style={styles.qrImageWrap}>
+                  {/* Using img tag on web, Image on native */}
+                  {Platform.OS === "web" ? (
+                    // @ts-ignore
+                    <img
+                      src={qrImgUrl}
+                      alt={`QR Table ${table.label}`}
+                      style={{ width: 160, height: 160, borderRadius: 8 }}
+                    />
+                  ) : (
+                    // On native show QR via Image component
+                    // eslint-disable-next-line @typescript-eslint/no-var-requires
+                    <View style={styles.qrNativeBox}>
+                      <Ionicons
+                        name="qr-code-outline"
+                        size={80}
+                        color={Theme.primary}
+                      />
+                      <Text style={styles.qrNativeHint}>Open on web to see QR</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Table Info */}
+                <View style={styles.qrInfo}>
+                  <Text style={styles.qrTableLabel}>Table {table.label}</Text>
+                  <Text style={styles.qrSectionLabel}>
+                    {sectionLabels[table.DiningSection] || "Section 1"}
+                  </Text>
+                  <Text style={styles.qrUrlSmall} numberOfLines={2}>
+                    {qrUrl}
+                  </Text>
+                </View>
+
+                {/* Actions */}
+                <View style={styles.qrActions}>
+                  <TouchableOpacity
+                    style={styles.shareBtn}
+                    onPress={() => handleShare(table)}
+                  >
+                    <Ionicons name="share-outline" size={16} color={Theme.primary} />
+                    <Text style={styles.shareBtnText}>Share</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.testBtn}
+                    onPress={() => {
+                      if (Platform.OS === "web") {
+                        window.open(qrUrl, "_blank");
+                      } else {
+                        Alert.alert("QR URL", qrUrl);
+                      }
+                    }}
+                  >
+                    <Ionicons name="open-outline" size={16} color="#fff" />
+                    <Text style={styles.testBtnText}>Test</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+
+          {filteredTables.length === 0 && (
+            <View style={styles.empty}>
+              <Ionicons name="grid-outline" size={48} color="#CBD5E1" />
+              <Text style={styles.emptyText}>No tables found</Text>
+            </View>
+          )}
+        </ScrollView>
+      )}
+
+      {/* Print styles (web only — injected into DOM) */}
+      {Platform.OS === "web" && (
+        <style
+          // @ts-ignore
+          dangerouslySetInnerHTML={{
+            __html: `
+              @media print {
+                body * { visibility: hidden; }
+                .qr-print-area, .qr-print-area * { visibility: visible; }
+                .qr-print-area { position: absolute; left: 0; top: 0; width: 100%; }
+                .no-print { display: none !important; }
+              }
+            `,
+          }}
+        />
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingTop: 56,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  headerSub: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  printBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Theme.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  printBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  infoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#bae6fd",
+  },
+  infoText: {
+    fontSize: 12,
+    color: "#0369a1",
+    fontWeight: "500",
+    flex: 1,
+  },
+  urlBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#f9fafb",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e5e7eb",
+  },
+  urlText: {
+    fontSize: 11,
+    color: "#6b7280",
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    flex: 1,
+  },
+  filterRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: "#F1F5F9",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+  },
+  filterChipActive: {
+    backgroundColor: Theme.primary,
+    borderColor: Theme.primary,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+  filterChipTextActive: {
+    color: "#fff",
+  },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    padding: 12,
+    gap: 12,
+    justifyContent: "center",
+  },
+  qrCard: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 16,
+    width: 220,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  qrImageWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  qrNativeBox: {
+    width: 160,
+    height: 160,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  qrNativeHint: {
+    fontSize: 11,
+    color: "#94A3B8",
+    marginTop: 8,
+    textAlign: "center",
+  },
+  qrInfo: {
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 12,
+  },
+  qrTableLabel: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  qrSectionLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748B",
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  qrUrlSmall: {
+    fontSize: 10,
+    color: "#94A3B8",
+    textAlign: "center",
+    marginTop: 4,
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+  },
+  qrActions: {
+    flexDirection: "row",
+    gap: 8,
+    width: "100%",
+  },
+  shareBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: Theme.primary,
+    backgroundColor: "#fff",
+  },
+  shareBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Theme.primary,
+  },
+  testBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: Theme.primary,
+  },
+  testBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  empty: {
+    alignItems: "center",
+    paddingVertical: 60,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#94A3B8",
+    fontWeight: "600",
+  },
+});
