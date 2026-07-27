@@ -39,7 +39,69 @@ router.post("/login", async (req, res) => {
       `);
 
     if (result.recordset.length === 0) {
-      console.log(`[AUTH] Login failed: UserName "${userName}" not found.`);
+      // Check if they are a registered member in MemberMaster
+      const encodedPassword = Buffer.from(password).toString("base64");
+      const memberResult = await pool.request()
+        .input("username", sql.VarChar, userName)
+        .input("password", sql.VarChar, encodedPassword)
+        .query(`
+          SELECT
+              M.MemberId,
+              M.Name AS UserName,
+              M.Email,
+              M.Phone AS Phone,
+              M.Promocode,
+              M.Promoamount,
+              (
+                  CASE
+                      WHEN M.CreditLimit > 0
+                          THEN M.CreditLimit - M.CurrentBalance + ISNULL(M.Promoamount, 0)
+                      ELSE
+                          M.CurrentBalance + ISNULL(M.Promoamount, 0)
+                  END
+              ) AS AvailableCredit
+          FROM MemberMaster M
+          WHERE M.Name = @username
+            AND M.Password = @password
+            AND M.IsActive = 1
+        `);
+
+      if (memberResult.recordset.length > 0) {
+        const memberUser = memberResult.recordset[0];
+        console.log(`[AUTH] Member Login Success: "${memberUser.UserName}"`);
+        
+        // Generate JWT token for member using MemberId
+        const token = jwt.sign(
+          {
+            userId: memberUser.MemberId,
+            username: memberUser.UserName,
+            memberId: memberUser.MemberId,
+            role: "MEMBER"
+          },
+          JWT_SECRET,
+          { expiresIn: "24h" }
+        );
+
+        return res.json({
+          success: true,
+          token,
+          user: {
+            userId: memberUser.MemberId,
+            id: memberUser.MemberId,
+            userName: memberUser.UserName,
+            fullName: memberUser.UserName,
+            email: memberUser.Email,
+            phone: memberUser.Phone,
+            role: "MEMBER",
+            MemberId: memberUser.MemberId,
+            Promocode: memberUser.Promocode,
+            Promoamount: memberUser.Promoamount,
+            AvailableCredit: memberUser.AvailableCredit
+          }
+        });
+      }
+
+      console.log(`[AUTH] Login failed: UserName "${userName}" not found in UserMaster or MemberMaster.`);
       return res.status(401).json({ success: false, message: "Invalid User ID or Password." });
     }
 
@@ -301,6 +363,144 @@ router.get("/permissions/:userGroupCode", async (req, res) => {
   } catch (err) {
     console.error("PERMISSIONS FETCH ERROR:", err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ✅ SIGNUP API
+router.post("/signup", async (req, res) => {
+  try {
+    const username = req.body.username?.trim() || req.body.customerName?.trim();
+    const password = req.body.password?.trim();
+    const phone = req.body.phone?.trim() || req.body.mobileNumber?.trim();
+    const email = req.body.email?.trim() || "";
+    const encodedPassword = Buffer.from(password).toString("base64");
+
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: "Username and password are required" });
+    }
+
+    const pool = await poolPromise;
+    let promoAmount = 0;
+    // Promo Code Validation
+    if (req.body.promoCode && req.body.promoCode.trim() !== "") {
+
+      const promoResult = await pool.request()
+        .input("PromoCode", sql.NVarChar, req.body.promoCode.trim())
+        .query(`
+      SELECT *
+      FROM PromoCodeMaster
+      WHERE PromoCode = @PromoCode
+        AND IsActive = 1
+    `);
+
+      if (promoResult.recordset.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid Promo Code"
+        });
+      }
+
+      const promo = promoResult.recordset[0];
+
+      if (promo) {
+        promoAmount = promo.DiscountValue;
+      }
+
+      if (
+        promo.MaxUsage !== null &&
+        promo.UsedCount >= promo.MaxUsage
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "This Promo Code has already been used."
+        });
+      }
+    }
+
+    // Check MemberMaster for unique username, phone, and email
+    const userResult = await pool.request()
+      .input("username", sql.VarChar, username)
+      .input("phone", sql.VarChar, phone || "")
+      .input("email", sql.VarChar, email || "")
+      .query(`
+        SELECT Name, Phone, Email
+        FROM MemberMaster
+        WHERE Name = @username
+           OR (Phone = @phone AND @phone <> '')
+           OR (Email = @email AND @email <> '')
+      `);
+
+    if (userResult.recordset.length > 0) {
+      const match = userResult.recordset[0];
+      if (match.Name.toLowerCase() === username.toLowerCase()) {
+        return res.status(409).json({ success: false, message: "Username already exists" });
+      }
+      if (match.Phone === phone) {
+        return res.status(409).json({ success: false, message: "Phone number already registered" });
+      }
+      if (email && match.Email === email) {
+        return res.status(409).json({ success: false, message: "Email ID already registered" });
+      }
+    }
+
+    const memberId = require("crypto").randomUUID();
+    await pool.request()
+      .input("memberId", sql.UniqueIdentifier, memberId)
+      .input("name", sql.NVarChar, username)
+      .input("phone", sql.NVarChar, phone || "")
+      .input("email", sql.NVarChar, email)
+      .input("creditLimit", sql.Decimal, 0)
+      .input("createdAt", sql.DateTime, new Date())
+      .input("address", sql.VarChar, "")
+      .input("isActive", sql.Bit, 1)
+      .input("balance", sql.Decimal, 0)
+      .input("currentBalance", sql.Decimal, 0)
+      .input("lowBalanceAlertSent", sql.Bit, 0)
+      .input("promoCode", sql.VarChar, req.body.promoCode || "")
+      .input("promoAmount", sql.Decimal(18, 2), promoAmount)
+      .input("password", sql.VarChar, encodedPassword)
+      .query(`
+        INSERT INTO MemberMaster (MemberId, Name, Phone, Email, CreditLimit, CreatedAt, Address, IsActive, Balance, CurrentBalance, LowBalanceAlertSent, Promocode, Promoamount, Password)
+        VALUES (@memberId, @name, @phone, @email, @creditLimit, @createdAt, @address, @isActive, @balance, @currentBalance, @lowBalanceAlertSent, @promoCode, @promoAmount, @password)
+      `);
+
+    if (req.body.promoCode && req.body.promoCode.trim() !== "") {
+      await pool.request()
+        .input("PromoCode", sql.NVarChar, req.body.promoCode.trim())
+        .query(`
+      UPDATE PromoCodeMaster
+      SET UsedCount = UsedCount + 1
+      WHERE PromoCode = @PromoCode
+    `);
+    }
+
+    const newUser = await pool.request()
+      .input("username", sql.VarChar, username)
+      .query(`
+      SELECT
+          M.MemberId,
+          M.Name AS UserName,
+          M.Promocode,
+          M.Promoamount,
+          (
+              CASE
+                  WHEN M.CreditLimit > 0
+                      THEN M.CreditLimit - M.CurrentBalance + ISNULL(M.Promoamount, 0)
+                  ELSE
+                      M.CurrentBalance + ISNULL(M.Promoamount, 0)
+              END
+          ) AS AvailableCredit
+      FROM MemberMaster M
+      WHERE M.Name = @username
+  `);
+
+    res.json({
+      success: true,
+      user: newUser.recordset[0]
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Server error");
   }
 });
 

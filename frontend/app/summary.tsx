@@ -1202,8 +1202,8 @@ export default function SummaryScreen() {
       }
 
       const itemSubtotal = baseTotal - itemDiscount;
-      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
-      const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway || (item as any).isTakeaway === true || (item as any).IsTakeaway === true || String((item as any).isTakeaway) === "1" || String((item as any).IsTakeaway) === "1";
+      const isSC = !isTakeawayItem;
       const itemTWCharge = isTakeawayItem ? item.qty * takeawayCharges : 0;
 
       return {
@@ -1220,8 +1220,8 @@ export default function SummaryScreen() {
   const allItemsHaveSC = useMemo(() => {
     const activeItems = finalItems.filter((i: any) => i.status !== "VOIDED" && i.statusCode !== 0);
     return activeItems.length > 0 && activeItems.every((item: any) => {
-      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
-      return !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
+      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway || (item as any).isTakeaway === true || (item as any).IsTakeaway === true || String((item as any).isTakeaway) === "1" || String((item as any).IsTakeaway) === "1";
+      return !isTakeawayItem;
     });
   }, [finalItems]);
 
@@ -2076,7 +2076,7 @@ export default function SummaryScreen() {
                           isPhone && !isLandscape && { fontSize: 13 },
                         ]}
                       >
-                        Discount
+                        {discountInfo?.label || (discountInfo?.applied ? "Discount" : "Discount")}
                       </Text>
                       <Text
                         style={[

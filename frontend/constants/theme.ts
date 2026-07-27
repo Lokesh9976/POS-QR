@@ -8,10 +8,10 @@ import { Platform } from 'react-native';
 
 export const Theme = {
   // ── Primary Brand ──
-  primary: '#F97316',
-  primaryDark: '#C2500A',
+  primary: '#FF5E1A',
+  primaryDark: '#E04D10',
   primaryLight: '#FFF4EC',
-  primaryBorder: 'rgba(249,115,22,0.35)',
+  primaryBorder: 'rgba(255,94,26,0.35)',
 
   // ── Backgrounds ──
   bgMain: '#FAF7F2',
@@ -32,12 +32,12 @@ export const Theme = {
   textSecondary: '#6B6B6B',
   textMuted: '#9CA3AF',
   textInverse: '#FFFFFF',
-  textOrange: '#F97316',
+  textOrange: '#FF5E1A',
 
   // ── Borders ──
   border: '#E8E0D5',
   borderStrong: '#D6CBBC',
-  borderOrange: 'rgba(249,115,22,0.3)',
+  borderOrange: 'rgba(255,94,26,0.3)',
 
   // ── Shadows ──
   shadowSm: {
@@ -83,7 +83,7 @@ export const Theme = {
   tableLocked: { bg: 'rgba(239,68,68,0.15)', border: '#EF4444' }, // Red for Reserved
   tableHold: { bg: 'rgba(59,130,246,0.15)', border: '#3B82F6' },
   tableSent: { bg: 'rgba(34,197,94,0.15)', border: '#22C55E' }, // Green for Sent/Dining
-  tableSentOld: { bg: 'rgba(249,115,22,0.15)', border: '#F97316' },
+  tableSentOld: { bg: 'rgba(255,94,26,0.15)', border: '#FF5E1A' },
   tableBillRequest: { bg: 'rgba(245,158,11,0.15)', border: '#F59E0B' }, // Amber for Checkout/Bill
   tableEmpty: { bg: '#FFFFFF', border: '#E8E0D5' },
 

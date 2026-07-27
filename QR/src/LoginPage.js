@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import "./LoginPage.css";
+import { useState } from "react";
 import { BASE_URL } from "./Configs/api";
+import "./LoginPage.css";
 
 const API = `${BASE_URL}/api`;
 
@@ -19,6 +19,14 @@ const PhoneIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
     stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+  </svg>
+);
+
+const MailIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+    <polyline points="22,6 12,13 2,6" />
   </svg>
 );
 
@@ -96,7 +104,9 @@ export default function LoginPage({ onLoginSuccess }) {
   // Sign Up fields
 
   const [suUsername, setSuUsername] = useState("");
+  const [suCountryCode, setSuCountryCode] = useState("+65");
   const [suPhone, setSuPhone] = useState("");
+  const [suEmail, setSuEmail] = useState("");
   const [suPassword, setSuPassword] = useState("");
   const [suConfirm, setSuConfirm] = useState("");
   const [suPromoCode, setSuPromoCode] = useState("");
@@ -140,13 +150,13 @@ export default function LoginPage({ onLoginSuccess }) {
         localStorage.setItem("isLoggedIn", "true");
         localStorage.setItem("qr_pos_user", JSON.stringify(data.user));
 
-       if (data.user?.Promocode) {
+        if (data.user?.Promocode) {
           localStorage.setItem("promoCode", data.user.Promocode);
           localStorage.setItem("promoAmount", data.user.Promoamount || 0);
-           localStorage.setItem(
-    "availableCredit",
-    data.user.AvailableCredit || 0
-  );
+          localStorage.setItem(
+            "availableCredit",
+            data.user.AvailableCredit || 0
+          );
         } else {
           localStorage.removeItem("promoCode");
           localStorage.removeItem("promoAmount");
@@ -195,8 +205,9 @@ export default function LoginPage({ onLoginSuccess }) {
         body: JSON.stringify({
           fullName: suUsername.trim(),
           username: suUsername.trim(),
+          email: suEmail.trim(),
           password: suPassword,
-          phone: suPhone.trim(),
+          phone: suCountryCode + suPhone.trim(),
           promoCode: suPromoCode.trim(),
         }),
       });
@@ -207,17 +218,17 @@ export default function LoginPage({ onLoginSuccess }) {
 
         if (data.user?.Promocode && data.user.Promocode.trim() !== "") {
 
-  localStorage.setItem("promoCode", data.user.Promocode);
-  localStorage.setItem("promoAmount", data.user.Promoamount || 0);
-  localStorage.setItem("availableCredit", data.user.AvailableCredit || 0);
+          localStorage.setItem("promoCode", data.user.Promocode);
+          localStorage.setItem("promoAmount", data.user.Promoamount || 0);
+          localStorage.setItem("availableCredit", data.user.AvailableCredit || 0);
 
-} else {
+        } else {
 
-  localStorage.removeItem("promoCode");
-  localStorage.removeItem("promoAmount");
-  localStorage.removeItem("availableCredit");
+          localStorage.removeItem("promoCode");
+          localStorage.removeItem("promoAmount");
+          localStorage.removeItem("availableCredit");
 
-}
+        }
 
         setSuccessUser(data.user.FullName || data.user.UserName || suUsername.trim());
         setSignedUpUser(data.user);
@@ -289,7 +300,7 @@ export default function LoginPage({ onLoginSuccess }) {
         {tab === "signin" && (
           <form className="login-form" onSubmit={handleSignIn} key="signin">
             <div className="login-field">
-              <label className="login-label" htmlFor="si-username">Username</label>
+              <label className="login-label" htmlFor="si-username">User Name</label>
               <div className="login-input-wrap">
                 <span className="login-input-icon"><UserIcon /></span>
                 <input
@@ -329,7 +340,7 @@ export default function LoginPage({ onLoginSuccess }) {
               </div>
             </div>
 
-             {error && (
+            {error && (
               <div className="login-error" role="alert">
                 <AlertIcon /> {error}
               </div>
@@ -379,14 +390,14 @@ export default function LoginPage({ onLoginSuccess }) {
             {/* Full Name field removed as requested */}
 
             <div className="login-field">
-              <label className="login-label" htmlFor="su-username">Username *</label>
+              <label className="login-label" htmlFor="su-username">User Name</label>
               <div className="login-input-wrap">
                 <span className="login-input-icon"><UserIcon /></span>
                 <input
                   id="su-username"
                   className="login-input"
                   type="text"
-                  placeholder="Choose a username"
+                  placeholder="Enter your name"
                   value={suUsername}
                   onChange={(e) => setSuUsername(e.target.value)}
                   autoComplete="username"
@@ -396,16 +407,56 @@ export default function LoginPage({ onLoginSuccess }) {
 
             <div className="login-field">
               <label className="login-label" htmlFor="su-phone">Phone Number *</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div className="login-input-wrap" style={{ width: '85px', flexShrink: 0 }}>
+                  <span className="login-input-icon"><PhoneIcon /></span>
+                  <select
+                    value={suCountryCode}
+                    onChange={(e) => setSuCountryCode(e.target.value)}
+                    className="login-input"
+                    style={{
+                      padding: '13px 8px 13px 36px',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      WebkitAppearance: 'none',
+                      MozAppearance: 'none',
+                      appearance: 'none'
+                    }}
+                  >
+                    <option value="+65">Singapore (+65)</option>
+                    <option value="+60">Malaysia (+60)</option>
+                    <option value="+91">India (+91)</option>
+                    <option value="+62">Indonesia (+62)</option>
+                    <option value="+1">USA (+1)</option>
+                  </select>
+                </div>
+                <div className="login-input-wrap" style={{ flex: 1 }}>
+                  <input
+                    id="su-phone"
+                    className="login-input"
+                    type="tel"
+                    placeholder="Enter phone number"
+                    value={suPhone}
+                    onChange={(e) => setSuPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                    autoComplete="tel"
+                    style={{ paddingLeft: '14px' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="login-field">
+              <label className="login-label" htmlFor="su-email">Email</label>
               <div className="login-input-wrap">
-                <span className="login-input-icon"><PhoneIcon /></span>
+                <span className="login-input-icon"><MailIcon /></span>
                 <input
-                  id="su-phone"
+                  id="su-email"
                   className="login-input"
-                  type="tel"
-                  placeholder="Enter phone number"
-                  value={suPhone}
-                  onChange={(e) => setSuPhone(e.target.value)}
-                  autoComplete="tel"
+                  type="email"
+                  placeholder="Enter email address (optional)"
+                  value={suEmail}
+                  onChange={(e) => setSuEmail(e.target.value)}
+                  autoComplete="email"
                 />
               </div>
             </div>
@@ -447,7 +498,7 @@ export default function LoginPage({ onLoginSuccess }) {
                   onChange={(e) => setSuConfirm(e.target.value)}
                   autoComplete="new-password"
                 />
- <button
+                <button
                   type="button"
                   className="login-eye-btn"
                   onClick={() => setShowConfirmPass((v) => !v)}
@@ -458,7 +509,7 @@ export default function LoginPage({ onLoginSuccess }) {
               </div>
             </div>
 
-                 {/* Promo Code */}
+            {/* Promo Code */}
             <div className="login-field">
               <label className="login-label" htmlFor="su-promo">
                 Promo Code
@@ -480,7 +531,7 @@ export default function LoginPage({ onLoginSuccess }) {
               </div>
             </div>
 
-             {error && (
+            {error && (
               <div className="login-error" role="alert">
                 <AlertIcon /> {error}
               </div>

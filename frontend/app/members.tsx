@@ -152,7 +152,9 @@ export default function MembersScreen() {
     setLoadingBillDetails(true);
     setBillDetails([]);
     try {
-      const res = await fetch(`${API_URL}/api/sales/detail/${tx.SettlementID}`);
+      const res = await fetch(`${API_URL}/api/sales/detail/${tx.SettlementID}`, {
+        headers: { Authorization: token ? `Bearer ${token}` : "" }
+      });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -183,7 +185,10 @@ export default function MembersScreen() {
     try {
       const res = await fetch(`${API_URL}/api/members/recharge`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : ""
+        },
         body: JSON.stringify({ memberId: rechargeMember.MemberId, amount: amt }),
       });
       const data = await res.json();
@@ -239,7 +244,9 @@ export default function MembersScreen() {
     setLoadingUsage(true);
     setUsageData(null);
     try {
-      const res = await fetch(`${API_URL}/api/members/usage/${member.MemberId}`);
+      const res = await fetch(`${API_URL}/api/members/usage/${member.MemberId}`, {
+        headers: { Authorization: token ? `Bearer ${token}` : "" }
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -319,7 +326,9 @@ export default function MembersScreen() {
   const fetchMembers = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/api/members`);
+      const res = await fetch(`${API_URL}/api/members`, {
+        headers: { Authorization: token ? `Bearer ${token}` : "" }
+      });
       if (!res.ok) throw new Error();
       const data = await res.json();
       setMembers(Array.isArray(data) ? data : []);
@@ -409,7 +418,10 @@ export default function MembersScreen() {
 
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: token ? `Bearer ${token}` : ""
+        },
         body: JSON.stringify({
           memberId: editingMember?.MemberId,
           name: formData.name.trim(),
@@ -816,7 +828,10 @@ export default function MembersScreen() {
                     try {
                       const res = await fetch(`${API_URL}/api/members/delete`, {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: { 
+                          "Content-Type": "application/json",
+                          Authorization: token ? `Bearer ${token}` : ""
+                        },
                         body: JSON.stringify({ memberId: member.MemberId }),
                       });
                       const data = await res.json();

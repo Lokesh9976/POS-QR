@@ -27,26 +27,54 @@ export default function CustomerCartScreen() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [userInfo, setUserInfo] = useState<{ UserName: string; FullName: string; Phone: string; Email?: string; PromoCode?: string; PromoAmount?: number } | null>(null);
+  const [applyPromo, setApplyPromo] = useState(false);
+
+  React.useEffect(() => {
+    if (typeof localStorage !== "undefined") {
+      const stored = localStorage.getItem("qr_pos_user");
+      if (stored) {
+        try {
+          setUserInfo(JSON.parse(stored));
+        } catch (e) {}
+      }
+    }
+  }, []);
 
   const currentCart = (currentContextId ? carts[currentContextId] || [] : []).filter(item => item.status === "NEW" || !item.status);
   const totalItems = currentCart.reduce((sum, item) => sum + (item.qty || 0), 0);
   const subtotal = currentCart.reduce((sum, item) => sum + (item.price || 0) * (item.qty || 0), 0);
 
-  const serviceChargePercentage = Number(settings?.serviceChargePercentage || 0);
-  const gstPercentage = Number(settings?.gstPercentage || 0);
-  const currencySymbol = settings?.currencySymbol || "$";
+  const serviceChargePercentage = Number(settings?.serviceChargePercentage ?? settings?.ServiceChargePercentage ?? 0);
+  const gstPercentage = Number(settings?.gstPercentage ?? settings?.GSTPercentage ?? 0);
+  const takeawayChargeRate = Number(settings?.takeawayCharges ?? settings?.TakeawayCharges ?? settings?.takeawayCharge ?? settings?.TakeawayCharge ?? 0);
+  const currencySymbol = settings?.currencySymbol ?? settings?.CurrencySymbol ?? "$";
 
-  // Calculate service charge eligible subtotal
+  const discountAmt = applyPromo ? Math.min(subtotal, Number(userInfo?.PromoAmount || 0)) : 0;
+  const netSubtotal = subtotal - discountAmt;
+
+  // Calculate service charge eligible subtotal (all dine-in items that are not takeaway)
   const scEligibleSubtotal = currentCart.reduce((sum, item) => {
-    const isServiceCharge = item.isServiceCharge === true || String(item.isServiceCharge) === "1" || String(item.isServiceCharge).toLowerCase() === "true";
-    if (isServiceCharge) {
+    const isTakeaway = item.isTakeaway === true || String(item.isTakeaway) === "1" || String(item.isTakeaway).toLowerCase() === "true" || (item as any).IsTakeaway === true || String((item as any).IsTakeaway) === "1" || String((item as any).IsTakeaway).toLowerCase() === "true";
+    if (!isTakeaway) {
       return sum + (item.price || 0) * (item.qty || 0);
     }
     return sum;
   }, 0);
 
-  const serviceChargeAmt = scEligibleSubtotal * (serviceChargePercentage / 100);
-  const totalBeforeGst = subtotal + serviceChargeAmt;
+  // Calculate takeaway items quantity and charge
+  const takeawayItemsQty = currentCart.reduce((sum, item) => {
+    const isTakeaway = item.isTakeaway === true || String(item.isTakeaway) === "1" || String(item.isTakeaway).toLowerCase() === "true" || (item as any).IsTakeaway === true || String((item as any).IsTakeaway) === "1" || String((item as any).IsTakeaway).toLowerCase() === "true";
+    if (isTakeaway) {
+      return sum + (item.qty || 0);
+    }
+    return sum;
+  }, 0);
+  const takeawayChargeAmt = takeawayItemsQty * takeawayChargeRate;
+
+  // Pro-rate service charge if discount is applied
+  const serviceChargeAmt = Math.max(0, scEligibleSubtotal - discountAmt) * (serviceChargePercentage / 100);
+  const totalBeforeGst = netSubtotal + serviceChargeAmt + takeawayChargeAmt;
   const gstAmt = totalBeforeGst * (gstPercentage / 100);
   const grandTotal = totalBeforeGst + gstAmt;
 
@@ -79,6 +107,8 @@ export default function CustomerCartScreen() {
           tableId: orderContext.tableId,
           orderType: "DINE_IN",
           entryStatus: "q",
+          discountAmount: discountAmt,
+          discountRemarks: applyPromo && userInfo?.PromoCode ? `Applied Promo Code: ${userInfo.PromoCode}` : null,
           items: currentCart.map(item => ({
             id: item.id,
             lineItemId: item.lineItemId || item.id,
@@ -95,6 +125,15 @@ export default function CustomerCartScreen() {
       });
 
       if (sendResponse.ok) {
+        // Update local storage promo amount on successful send
+        if (applyPromo && userInfo) {
+          const updatedAmount = Math.max(0, Number(userInfo.PromoAmount || 0) - discountAmt);
+          const updatedUser = { ...userInfo, PromoAmount: updatedAmount };
+          localStorage.setItem("qr_pos_user", JSON.stringify(updatedUser));
+          setUserInfo(updatedUser);
+          setApplyPromo(false);
+        }
+
         // Clear local unsent cart items and skip background save-cart to prevent race conditions
         useCartStore.getState().markAllAsSent(true);
         
@@ -210,10 +249,41 @@ export default function CustomerCartScreen() {
                 <Text style={styles.billLabel}>Gross Total</Text>
                 <Text style={styles.billValue}>{currencySymbol}{subtotal.toFixed(2)}</Text>
               </View>
+              {userInfo?.PromoCode && Number(userInfo?.PromoAmount) > 0 && (
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#FFF2EC", padding: 12, borderRadius: 12, marginVertical: 8, borderWidth: 1, borderColor: "#FFD2BD" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="gift" size={20} color="#FF5E1A" />
+                    <View>
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#334155" }}>Apply Promo Coupon ({userInfo.PromoCode})</Text>
+                      <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>Available Balance: {currencySymbol}{Number(userInfo.PromoAmount).toFixed(2)}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity 
+                    style={{ backgroundColor: applyPromo ? "#FF5E1A" : "#fff", borderWidth: 1.5, borderColor: "#FF5E1A", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+                    onPress={() => setApplyPromo(!applyPromo)}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: applyPromo ? "#fff" : "#FF5E1A" }}>
+                      {applyPromo ? "Applied" : "Apply"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              {applyPromo && discountAmt > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={[styles.billLabel, { color: "#FF5E1A", fontWeight: "700" }]}>Promo Discount</Text>
+                  <Text style={[styles.billValue, { color: "#FF5E1A", fontWeight: "700" }]}>-{currencySymbol}{discountAmt.toFixed(2)}</Text>
+                </View>
+              )}
               {serviceChargePercentage > 0 && (
                 <View style={styles.billRow}>
                   <Text style={styles.billLabel}>Item SVC ({serviceChargePercentage}%)</Text>
                   <Text style={styles.billValue}>{currencySymbol}{serviceChargeAmt.toFixed(2)}</Text>
+                </View>
+              )}
+              {takeawayChargeAmt > 0 && (
+                <View style={styles.billRow}>
+                  <Text style={styles.billLabel}>Takeaway Charge</Text>
+                  <Text style={styles.billValue}>{currencySymbol}{takeawayChargeAmt.toFixed(2)}</Text>
                 </View>
               )}
               {gstPercentage > 0 && (

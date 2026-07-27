@@ -1170,6 +1170,9 @@ const existing = prev.find(
     setIsCartLoading(true);
     try {
 
+      const promoCodeUsed = localStorage.getItem("promoCode") || "";
+      const promoAmountUsed = Number(localStorage.getItem("promoAmount") || 0);
+
       const payload = {
 
         tableId: tableId,
@@ -1177,6 +1180,12 @@ const existing = prev.find(
         orderId: currentOrderId,
 
         userId: "00000000-0000-0000-0000-000000000000",
+
+        entryStatus: "q",
+
+        // 🔥 Include QR promo discount so POS sees it in RestaurantOrderCur
+        discountAmount: promoAmountUsed > 0 ? promoAmountUsed : undefined,
+        discountRemarks: promoAmountUsed > 0 && promoCodeUsed ? `Applied Promo Code: ${promoCodeUsed}` : undefined,
 
         items: cart.map((item) => ({
 
@@ -1636,13 +1645,7 @@ console.log("Service Charge:", serviceCharge);
     return <div>Loading...</div>;
   }
 
-  // Parse logged-in user info for display
-  const loggedInUser = (() => {
-    try { return JSON.parse(localStorage.getItem("qr_pos_user") || "{}"); } catch { return {}; }
-  })();
-  const displayName = loggedInUser.FullName || loggedInUser.UserName || "Guest";
-
-  if (!isLoggedIn) {
+  if (enableLogin && !isLoggedIn) {
     return (
       <LoginPage
         onLoginSuccess={() => {
@@ -1727,35 +1730,21 @@ console.log("Service Charge:", serviceCharge);
                     🟢 Order Status
                   </button>
 
-                  {/* User + Logout */}
-                  <div className="user-logout-wrap">
-                    <div className="user-avatar-chip">
-                      <span className="user-avatar-initial">
-                        {displayName.charAt(0).toUpperCase()}
-                      </span>
-                      <span className="user-display-name">{displayName}</span>
-                    </div>
+                  {enableLogin && (
                     <button
-                      className="logout-btn-premium"
-                      title="Logout"
+                      className="logout-btn"
                       onClick={() => {
                         localStorage.removeItem("isLoggedIn");
                         localStorage.removeItem("qr_pos_user");
                         localStorage.removeItem("promoCode");
                         localStorage.removeItem("promoAmount");
                         localStorage.removeItem("memberId");
-                        localStorage.removeItem("availableCredit");
                         window.location.reload();
                       }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                        <polyline points="16 17 21 12 16 7" />
-                        <line x1="21" y1="12" x2="9" y2="12" />
-                      </svg>
-                      Logout
+                      🚪 Logout
                     </button>
-                  </div>
+                  )}
                 </div>
               </div>
 

@@ -321,14 +321,6 @@ export default function LoginScreen() {
                     )}
                   </TouchableOpacity>
 
-                  {/* Customer Mode Entry Button */}
-                  <TouchableOpacity
-                    style={[styles.button, { backgroundColor: '#0F172A', marginTop: 12, borderWidth: 1, borderColor: '#334155' }, isLandscape && { height: 50 }]}
-                    onPress={() => router.push("/customer" as any)}
-                  >
-                    <Ionicons name="restaurant-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.buttonText}>Customer Mode</Text>
-                  </TouchableOpacity>
                 </Animated.View>
 
                 {/* Footer */}

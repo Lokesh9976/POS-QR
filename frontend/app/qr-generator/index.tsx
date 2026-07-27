@@ -45,7 +45,9 @@ const SECTION_NAMES: Record<string, string> = {
   "1": "SECTION_1",
   "2": "SECTION_2",
   "3": "SECTION_3",
+  "4": "TAKEAWAY",
 };
+
 
 export default function QRGeneratorScreen() {
   const router = useRouter();
@@ -64,8 +66,8 @@ export default function QRGeneratorScreen() {
       const res = await fetch(`${API_URL}/api/tables/all`);
       const data = await res.json();
       if (Array.isArray(data)) {
-        // Only dine-in tables
-        setTables(data.filter((t: Table) => t.DiningSection !== "4"));
+        // Include all tables (dine-in + takeaway)
+        setTables(data);
       }
     } catch {
       Alert.alert("Error", "Failed to load tables from database.");
@@ -74,23 +76,26 @@ export default function QRGeneratorScreen() {
     }
   };
 
+
   const buildQrUrl = (table: Table) => {
     const sectionName = SECTION_NAMES[table.DiningSection] || "SECTION_1";
     return `${baseUrl}/customer?tableId=${table.id}&tableNo=${encodeURIComponent(table.label)}&section=${sectionName}`;
   };
 
-  const sections = ["all", "1", "2", "3"];
+  const sections = ["all", "1", "2", "3", "4"];
   const sectionLabels: Record<string, string> = {
     all: "All Tables",
     "1": "Section 1",
     "2": "Section 2",
     "3": "Section 3",
+    "4": "Takeaway",
   };
 
   const filteredTables =
     selectedSection === "all"
       ? tables
       : tables.filter((t) => t.DiningSection === selectedSection);
+
 
   const handleShare = async (table: Table) => {
     const url = buildQrUrl(table);
@@ -120,7 +125,16 @@ export default function QRGeneratorScreen() {
     <View style={styles.root}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/category" as any);
+            }
+          }}
+          style={styles.backBtn}
+        >
           <Ionicons name="arrow-back" size={22} color={Theme.textPrimary} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -220,7 +234,7 @@ export default function QRGeneratorScreen() {
                   <Text style={styles.qrSectionLabel}>
                     {sectionLabels[table.DiningSection] || "Section 1"}
                   </Text>
-                  <Text style={styles.qrUrlSmall} numberOfLines={2}>
+                  <Text style={styles.qrUrlSmall} numberOfLines={1} ellipsizeMode="middle">
                     {qrUrl}
                   </Text>
                 </View>
@@ -437,6 +451,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     marginBottom: 12,
+    width: "100%",
+    overflow: "hidden",
   },
   qrTableLabel: {
     fontSize: 18,
@@ -458,6 +474,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 4,
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    width: "100%",
   },
   qrActions: {
     flexDirection: "row",

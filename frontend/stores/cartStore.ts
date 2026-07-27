@@ -1317,6 +1317,8 @@ export const useCartStore = create<CartState>()(
 
             const rawItems = Array.isArray(data) ? data : (data.items || []);
             const orderId = data.currentOrderId || null;
+            // 🔥 QR PROMO SYNC: Restore order-level discount applied from QR app
+            const serverOrderDiscount = data.orderDiscount || null;
 
             const dbItems = rawItems.map((item: any) => normalizeCartItem(item));
 
@@ -1350,6 +1352,30 @@ export const useCartStore = create<CartState>()(
 
             if (!resolvedContextId) {
               return;
+            }
+
+            // 🔥 QR PROMO SYNC: If the server tells us there's an active order-level discount
+            // (applied by the QR customer), automatically apply it to the discounts store
+            // so the POS summary screen shows the correct totals.
+            if (serverOrderDiscount && serverOrderDiscount.amount > 0) {
+              const existingDiscount = get().discounts[resolvedContextId];
+              // Only apply if there's no existing POS-side discount already applied
+              if (!existingDiscount?.applied) {
+                const promoLabel = serverOrderDiscount.remarks
+                  ? serverOrderDiscount.remarks.replace('Applied Promo Code: ', 'Promo: ')
+                  : `Promo (QR)`;
+                set((state) => ({
+                  discounts: {
+                    ...state.discounts,
+                    [resolvedContextId!]: {
+                      applied: true,
+                      type: 'fixed' as const,
+                      value: serverOrderDiscount.amount,
+                      label: promoLabel,
+                    }
+                  }
+                }));
+              }
             }
 
             // 🚀 SAFETY MERGE: Never let the server clear local "NEW" or recently "SENT" items

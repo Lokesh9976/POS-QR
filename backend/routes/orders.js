@@ -263,6 +263,8 @@ async function syncToProfessionalTables(
   userId,
   startDate,
   isQROrder = false,
+  discountAmount = 0,
+  discountRemarks = null,
 ) {
   const isTakeaway =
     !tableId ||
@@ -333,10 +335,15 @@ async function syncToProfessionalTables(
       .input("orderId", sql.UniqueIdentifier, orderGuid)
       .input("orderNo", sql.NVarChar(50), cleanOrderNo)
       .input("priority", sql.Int, priorityCode)
-      .input("isTakeaway", sql.Bit, isTakeaway ? 1 : 0).query(`
+      .input("isTakeaway", sql.Bit, isTakeaway ? 1 : 0)
+      .input("discAmt", sql.Decimal(18, 2), discountAmount || 0)
+      .input("discRemarks", sql.NVarChar(250), discountRemarks || null)
+      .query(`
         UPDATE RestaurantOrderCur 
         SET PriorityCode = ISNULL(PriorityCode, @priority),
             IsTakeAway = @isTakeaway,
+            DiscountAmount = CASE WHEN @discAmt > 0 THEN @discAmt ELSE DiscountAmount END,
+            DiscountRemarks = CASE WHEN @discRemarks IS NOT NULL THEN @discRemarks ELSE DiscountRemarks END,
             OrderNumber = CASE 
                             WHEN OrderNumber IS NULL OR OrderNumber = '' OR OrderNumber = 'PENDING' OR OrderNumber = 'NEW' OR OrderNumber = '#NEW' OR OrderNumber LIKE 'TEMP-%' THEN @orderNo 
                             ELSE OrderNumber 
@@ -368,8 +375,10 @@ async function syncToProfessionalTables(
       .input("customerName", sql.NVarChar, tableCustomerName)
       .input("takeawayCharge", sql.Decimal(18, 2), initialTakeawayCharge)
       .input("startDate", sql.Date, startDate)
+      .input("discAmt", sql.Decimal(18, 2), discountAmount || 0)
+      .input("discRemarks", sql.NVarChar(250), discountRemarks || null)
       .query(
-        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName, TakeawayCharge, start_date) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName, @takeawayCharge, @startDate)",
+        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName, TakeawayCharge, start_date, DiscountAmount, DiscountRemarks) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName, @takeawayCharge, @startDate, @discAmt, @discRemarks)",
       );
   }
 
@@ -528,12 +537,7 @@ async function syncToProfessionalTables(
       String(item.isTakeAway).toLowerCase() === "true" ||
       String(item.IsTakeAway).toLowerCase() === "true";
 
-    const isSC =
-      !isTWItem && (
-        item.isServiceCharge === true ||
-        String(item.isServiceCharge) === "1" ||
-        String(item.isServiceCharge).toLowerCase() === "true"
-      );
+    const isSC = !isTWItem;
     let itemSC = null;
     if (isSC) {
       const qtyVal = Number(item.qty || 1);
@@ -716,6 +720,7 @@ async function syncTableStatus(req, tableId) {
     DECLARE @takeawayCharge DECIMAL(18,2) = 0;
     DECLARE @takeawayRate DECIMAL(18,2) = 0;
     DECLARE @gstRate DECIMAL(18,2) = 0.09; -- default 9%
+    DECLARE @discountAmount DECIMAL(18,2) = 0;
 
     SELECT TOP 1 @takeawayRate = ISNULL(TakeawayCharges, 0) FROM CompanySettings;
 
@@ -727,16 +732,26 @@ async function syncTableStatus(req, tableId) {
     FROM RestaurantOrderDetailCur 
     WHERE OrderId = @ActualOrderId AND StatusCode <> 0;
 
+    SELECT TOP 1 @discountAmount = ISNULL(DiscountAmount, 0) FROM RestaurantOrderCur WHERE OrderId = @ActualOrderId;
+
     SELECT TOP 1 @gstRate = ISNULL(GSTPercentage, 0) / 100.0 FROM CompanySettings;
     IF @gstRate IS NULL SET @gstRate = 0.09;
 
-    SET @total = ROUND(@subtotal + @serviceCharge + @takeawayCharge + ((@subtotal + @serviceCharge + @takeawayCharge) * @gstRate), 2);
+    DECLARE @taxableSubtotal DECIMAL(18,2) = @subtotal - @discountAmount;
+    IF @taxableSubtotal < 0 SET @taxableSubtotal = 0;
+
+    SET @total = ROUND(@taxableSubtotal + @serviceCharge + @takeawayCharge + ((@taxableSubtotal + @serviceCharge + @takeawayCharge) * @gstRate), 2);
 
     -- Update RestaurantOrderCur with calculated TakeawayCharge
     IF @ActualOrderId IS NOT NULL
     BEGIN
         UPDATE RestaurantOrderCur 
-        SET TakeawayCharge = @takeawayCharge
+        SET TakeawayCharge = @takeawayCharge,
+            DiscountAmount = @discountAmount,
+            TotalDiscountAmount = @discountAmount,
+            ServiceCharge = @serviceCharge,
+            TotalTax = ROUND((@taxableSubtotal + @serviceCharge + @takeawayCharge) * @gstRate, 2),
+            TotalAmount = @total
         WHERE OrderId = @ActualOrderId;
     END
 
@@ -997,7 +1012,7 @@ router.post("/save-cart", async (req, res) => {
 
 router.post("/send", async (req, res) => {
   try {
-    const { tableId, orderId, items, userId } = req.body;
+    const { tableId, orderId, items, userId, discountAmount, discountRemarks } = req.body;
     const pool = await poolPromise;
     const cleanId = String(tableId)
       .replace(/^\{|\}$/g, "")
@@ -1059,6 +1074,8 @@ router.post("/send", async (req, res) => {
         userId,
         null,
         req.body.entryStatus === "q",
+        discountAmount,
+        discountRemarks,
       );
 
       // 4. Lock Table to the new ID
@@ -1170,6 +1187,27 @@ router.get("/cart/:tableId", async (req, res) => {
     const tableNumber = tableRow?.TableNumber;
     const currentOrderId = tableRow?.CurrentOrderId;
 
+    // 🔥 Fetch order-level discount from RestaurantOrderCur (applied by QR customer)
+    let orderDiscount = null;
+    try {
+      const discRes = await pool
+        .request()
+        .input("tableNo", sql.VarChar(20), String(tableNumber || ""))
+        .query(`
+          SELECT TOP 1 DiscountAmount, DiscountRemarks 
+          FROM RestaurantOrderCur 
+          WHERE Tableno = @tableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+          ORDER BY CreatedOn DESC
+        `);
+      const discRow = discRes.recordset[0];
+      if (discRow && Number(discRow.DiscountAmount) > 0) {
+        orderDiscount = {
+          amount: Number(discRow.DiscountAmount),
+          remarks: discRow.DiscountRemarks || ""
+        };
+      }
+    } catch (_) {}
+
     // Fetch items: prioritize by CurrentOrderId, fall back to open order by TableNumber
     // 💡 LIVE SYNC: Allow TEMP- IDs so other devices can see the draft cart items!
     const isRealOrderId =
@@ -1250,7 +1288,7 @@ router.get("/cart/:tableId", async (req, res) => {
         : [],
     }));
 
-    res.json({ items, currentOrderId: isRealOrderId ? currentOrderId : null });
+    res.json({ items, currentOrderId: isRealOrderId ? currentOrderId : null, orderDiscount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

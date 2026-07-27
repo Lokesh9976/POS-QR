@@ -24,6 +24,365 @@ import { Ionicons } from "@expo/vector-icons";
 
 const { width } = Dimensions.get("window");
 
+const LogoutButtonWeb = ({ onConfirm }: { onConfirm: () => void }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const styleId = "animated-logout-style";
+    if (document.getElementById(styleId)) return;
+
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      .logoutButton {
+        --figure-duration: 100ms;
+        --transform-figure: none;
+        --walking-duration: 100ms;
+        --transform-arm1: none;
+        --transform-wrist1: none;
+        --transform-arm2: none;
+        --transform-wrist2: none;
+        --transform-leg1: none;
+        --transform-calf1: none;
+        --transform-leg2: none;
+        --transform-calf2: none;
+        background: none;
+        border: 0;
+        color: #f4f7ff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        font-family: "Quicksand", sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        height: 44px;
+        outline: none;
+        padding: 0 48px 0 24px;
+        perspective: 100px;
+        position: relative;
+        text-align: left;
+        width: 100%;
+        flex: 1;
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .logoutButton::before {
+        background-color: #EF4444;
+        border-radius: 12px;
+        content: "";
+        display: block;
+        height: 100%;
+        left: 0;
+        position: absolute;
+        top: 0;
+        transform: none;
+        transition: transform 50ms ease;
+        width: 100%;
+        z-index: 2;
+      }
+      .logoutButton:hover .door {
+        transform: rotateY(20deg);
+      }
+      .logoutButton:active::before {
+        transform: scale(0.96);
+      }
+      .logoutButton:active .door {
+        transform: rotateY(28deg);
+      }
+      .logoutButton.clicked::before {
+        transform: none;
+      }
+      .logoutButton.clicked .door {
+        transform: rotateY(35deg);
+      }
+      .logoutButton.door-slammed .door {
+        transform: none;
+        transition: transform 100ms ease-in 250ms;
+      }
+      .logoutButton.falling {
+        animation: shake 200ms linear;
+      }
+      .logoutButton.falling .bang {
+        animation: flash 300ms linear;
+      }
+      .logoutButton.falling .figure {
+        animation: spin 1000ms infinite linear;
+        top: 1000px;
+        opacity: 0;
+        right: 1px;
+        transition: transform calc(var(--figure-duration) * 1ms) linear, top calc(var(--figure-duration) * 1ms) cubic-bezier(0.7, 0.1, 1, 1) 100ms, opacity calc(var(--figure-duration) * 0.25ms) linear calc(var(--figure-duration) * 0.75ms);
+        z-index: 1;
+      }
+      .button-text {
+        color: #f4f7ff;
+        font-weight: 700;
+        position: relative;
+        z-index: 10;
+        white-space: nowrap;
+      }
+      .logoutButton svg {
+        display: block;
+        position: absolute;
+      }
+      .figure {
+        top: 7px;
+        fill: #ffffff;
+        right: 18px;
+        transform: var(--transform-figure);
+        transition: transform calc(var(--figure-duration) * 1ms) cubic-bezier(0.2, 0.1, 0.8, 0.9);
+        width: 30px;
+        height: 30px;
+        z-index: 4;
+      }
+      .door,
+      .doorway {
+        top: 6px;
+        right: 12px;
+        width: 32px;
+        height: 32px;
+      }
+      .doorway {
+        fill: #1e1e1e;
+        z-index: 3;
+      }
+      .door {
+        fill: #ffffff;
+        transform: rotateY(20deg);
+        transform-origin: 100% 50%;
+        transform-style: preserve-3d;
+        transition: transform 200ms ease;
+        z-index: 5;
+      }
+      .door path {
+        fill: #ffffff;
+        stroke: #EF4444;
+        stroke-width: 4;
+      }
+      .door circle {
+        fill: #EF4444;
+      }
+      .bang {
+        opacity: 0;
+        fill: #ffffff;
+      }
+      .arm1, .wrist1, .arm2, .wrist2, .leg1, .calf1, .leg2, .calf2 {
+        transition: transform calc(var(--walking-duration) * 1ms) ease-in-out;
+      }
+      .arm1 {
+        transform: var(--transform-arm1);
+        transform-origin: 52% 45%;
+      }
+      .wrist1 {
+        transform: var(--transform-wrist1);
+        transform-origin: 59% 55%;
+      }
+      .arm2 {
+        transform: var(--transform-arm2);
+        transform-origin: 47% 43%;
+      }
+      .wrist2 {
+        transform: var(--transform-wrist2);
+        transform-origin: 35% 47%;
+      }
+      .leg1 {
+        transform: var(--transform-leg1);
+        transform-origin: 47% 64.5%;
+      }
+      .calf1 {
+        transform: var(--transform-calf1);
+        transform-origin: 55.5% 71.5%;
+      }
+      .leg2 {
+        transform: var(--transform-leg2);
+        transform-origin: 43% 63%;
+      }
+      .calf2 {
+        transform: var(--transform-calf2);
+        transform-origin: 41.5% 73%;
+      }
+      @keyframes spin {
+        from { transform: rotate(0deg) scale(0.94); }
+        to { transform: rotate(359deg) scale(0.94); }
+      }
+      @keyframes shake {
+        0% { transform: rotate(-1deg); }
+        50% { transform: rotate(2deg); }
+        100% { transform: rotate(-1deg); }
+      }
+      @keyframes flash {
+        0% { opacity: 0.4; }
+        100% { opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
+  const handleClick = () => {
+    const button = containerRef.current?.querySelector(".logoutButton") as HTMLElement;
+    if (!button || button.classList.contains("clicked")) return;
+
+    const logoutButtonStates: Record<string, Record<string, string>> = {
+      default: {
+        "--figure-duration": "100",
+        "--transform-figure": "none",
+        "--walking-duration": "100",
+        "--transform-arm1": "none",
+        "--transform-wrist1": "none",
+        "--transform-arm2": "none",
+        "--transform-wrist2": "none",
+        "--transform-leg1": "none",
+        "--transform-calf1": "none",
+        "--transform-leg2": "none",
+        "--transform-calf2": "none",
+      },
+      hover: {
+        "--figure-duration": "100",
+        "--transform-figure": "translateX(1.5px)",
+        "--walking-duration": "100",
+        "--transform-arm1": "rotate(-5deg)",
+        "--transform-wrist1": "rotate(-15deg)",
+        "--transform-arm2": "rotate(5deg)",
+        "--transform-wrist2": "rotate(6deg)",
+        "--transform-leg1": "rotate(-10deg)",
+        "--transform-calf1": "rotate(5deg)",
+        "--transform-leg2": "rotate(20deg)",
+        "--transform-calf2": "rotate(-20deg)",
+      },
+      walking1: {
+        "--figure-duration": "300",
+        "--transform-figure": "translateX(11px)",
+        "--walking-duration": "300",
+        "--transform-arm1": "translateX(-4px) translateY(-2px) rotate(120deg)",
+        "--transform-wrist1": "rotate(-5deg)",
+        "--transform-arm2": "translateX(4px) rotate(-110deg)",
+        "--transform-wrist2": "rotate(-5deg)",
+        "--transform-leg1": "translateX(-3px) rotate(80deg)",
+        "--transform-calf1": "rotate(-30deg)",
+        "--transform-leg2": "translateX(4px) rotate(-60deg)",
+        "--transform-calf2": "rotate(20deg)",
+      },
+      walking2: {
+        "--figure-duration": "400",
+        "--transform-figure": "translateX(17px)",
+        "--walking-duration": "300",
+        "--transform-arm1": "rotate(60deg)",
+        "--transform-wrist1": "rotate(-15deg)",
+        "--transform-arm2": "rotate(-45deg)",
+        "--transform-wrist2": "rotate(6deg)",
+        "--transform-leg1": "rotate(-5deg)",
+        "--transform-calf1": "rotate(10deg)",
+        "--transform-leg2": "rotate(10deg)",
+        "--transform-calf2": "rotate(-20deg)",
+      },
+      falling1: {
+        "--figure-duration": "1600",
+        "--walking-duration": "400",
+        "--transform-arm1": "rotate(-60deg)",
+        "--transform-wrist1": "none",
+        "--transform-arm2": "rotate(30deg)",
+        "--transform-wrist2": "rotate(120deg)",
+        "--transform-leg1": "rotate(-30deg)",
+        "--transform-calf1": "rotate(-20deg)",
+        "--transform-leg2": "rotate(20deg)",
+      },
+      falling2: {
+        "--walking-duration": "300",
+        "--transform-arm1": "rotate(-100deg)",
+        "--transform-arm2": "rotate(-60deg)",
+        "--transform-wrist2": "rotate(60deg)",
+        "--transform-leg1": "rotate(80deg)",
+        "--transform-calf1": "rotate(20deg)",
+        "--transform-leg2": "rotate(-60deg)",
+      },
+      falling3: {
+        "--walking-duration": "500",
+        "--transform-arm1": "rotate(-30deg)",
+        "--transform-wrist1": "rotate(40deg)",
+        "--transform-arm2": "rotate(50deg)",
+        "--transform-wrist2": "none",
+        "--transform-leg1": "rotate(-30deg)",
+        "--transform-leg2": "rotate(20deg)",
+        "--transform-calf2": "none",
+      },
+    };
+
+    const updateButtonState = (state: string) => {
+      if (logoutButtonStates[state]) {
+        for (let key in logoutButtonStates[state]) {
+          button.style.setProperty(key, logoutButtonStates[state][key]);
+        }
+      }
+    };
+
+    button.classList.add("clicked");
+    updateButtonState("walking1");
+
+    setTimeout(() => {
+      button.classList.add("door-slammed");
+      updateButtonState("walking2");
+      setTimeout(() => {
+        button.classList.add("falling");
+        updateButtonState("falling1");
+        setTimeout(() => {
+          updateButtonState("falling2");
+          setTimeout(() => {
+            updateButtonState("falling3");
+            setTimeout(() => {
+              onConfirm();
+              button.classList.remove("clicked", "door-slammed", "falling");
+              updateButtonState("default");
+            }, 1000);
+          }, 300);
+        }, 400);
+      }, 400);
+    }, 300);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      style={{ display: "inline-block", flex: 1 }}
+      dangerouslySetInnerHTML={{
+        __html: `
+          <button class="logoutButton">
+            <svg class="doorway" viewBox="0 0 100 100">
+              <path d="M93.4 86.3H58.6c-1.9 0-3.4-1.5-3.4-3.4V17.1c0-1.9 1.5-3.4 3.4-3.4h34.8c1.9 0 3.4 1.5 3.4 3.4v65.8c0 1.9-1.5 3.4-3.4 3.4z" />
+              <path class="bang" d="M40.5 43.7L26.6 31.4l-2.5 6.7zM41.9 50.4l-19.5-4-1.4 6.3zM40 57.4l-17.7 3.9 3.9 5.7z" />
+            </svg>
+            <svg class="figure" viewBox="0 0 100 100">
+              <circle cx="52.1" cy="32.4" r="6.4" />
+              <path d="M50.7 62.8c-1.2 2.5-3.6 5-7.2 4-3.2-.9-4.9-3.5-4-7.8.7-3.4 3.1-13.8 4.1-15.8 1.7-3.4 1.6-4.6 7-3.7 4.3.7 4.6 2.5 4.3 5.4-.4 3.7-2.8 15.1-4.2 17.9z" />
+              <g class="arm1">
+                <path d="M55.5 56.5l-6-9.5c-1-1.5-.6-3.5.9-4.4 1.5-1 3.7-1.1 4.6.4l6.1 10c1 1.5.3 3.5-1.1 4.4-1.5.9-3.5.5-4.5-.9z" />
+                <path class="wrist1" d="M69.4 59.9L58.1 58c-1.7-.3-2.9-1.9-2.6-3.7.3-1.7 1.9-2.9 3.7-2.6l11.4 1.9c1.7.3 2.9 1.9 2.6 3.7-.4 1.7-2 2.9-3.8 2.6z" />
+              </g>
+              <g class="arm2">
+                <path d="M34.2 43.6L45 40.3c1.7-.6 3.5.3 4 2 .6 1.7-.3 4-2 4.5l-10.8 2.8c-1.7.6-3.5-.3-4-2-.6-1.6.3-3.4 2-4z" />
+                <path class="wrist2" d="M27.1 56.2L32 45.7c.7-1.6 2.6-2.3 4.2-1.6 1.6.7 2.3 2.6 1.6 4.2L33 58.8c-.7 1.6-2.6 2.3-4.2 1.6-1.7-.7-2.4-2.6-1.7-4.2z" />
+              </g>
+              <g class="leg1">
+                <path d="M52.1 73.2s-7-5.7-7.9-6.5c-.9-.9-1.2-3.5-.1-4.9 1.1-1.4 3.8-1.9 5.2-.9l7.9 7c1.4 1.1 1.7 3.5.7 4.9-1.1 1.4-4.4 1.5-5.8.4z" />
+                <path class="calf1" d="M52.6 84.4l-1-12.8c-.1-1.9 1.5-3.6 3.5-3.7 2-.1 3.7 1.4 3.8 3.4l1 12.8c.1 1.9-1.5 3.6-3.5 3.7-2 0-3.7-1.5-3.8-3.4z" />
+              </g>
+              <g class="leg2">
+                <path d="M37.8 72.7s1.3-10.2 1.6-11.4 2.4-2.8 4.1-2.6c1.7.2 3.6 2.3 3.4 4l-1.8 11.1c-.2 1.7-1.7 3.3-3.4 3.1-1.8-.2-4.1-2.4-3.9-4.2z" />
+                <path class="calf2" d="M29.5 82.3l9.6-10.9c1.3-1.4 3.6-1.5 5.1-.1 1.5 1.4.4 4.9-.9 6.3l-8.5 9.6c-1.3 1.4-3.6 1.5-5.1.1-1.4-1.3-1.5-3.5-.2-5z" />
+              </g>
+            </svg>
+            <svg class="door" viewBox="0 0 100 100">
+              <path d="M93.4 86.3H58.6c-1.9 0-3.4-1.5-3.4-3.4V17.1c0-1.9 1.5-3.4 3.4-3.4h34.8c1.9 0 3.4 1.5 3.4 3.4v65.8c0 1.9-1.5 3.4-3.4 3.4z" />
+              <circle cx="66" cy="50" r="3.7" />
+            </svg>
+            <span class="button-text">Yes, Log Out</span>
+          </button>
+        `,
+      }}
+      onClick={handleClick}
+    />
+  );
+};
+
 export default function CustomerMenuScreen() {
   const router = useRouter();
   const { kitchens, allDishes, fetchMenu, fetchGroups, isLoading } = useMenuStore();
@@ -36,6 +395,17 @@ export default function CustomerMenuScreen() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [isSessionClosed, setIsSessionClosed] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [userInfo, setUserInfo] = useState<{ UserName: string; FullName: string; Phone: string; Email?: string; PromoCode?: string; PromoAmount?: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof localStorage !== "undefined") {
+      const stored = localStorage.getItem("qr_pos_user");
+      if (stored) {
+        try { setUserInfo(JSON.parse(stored)); } catch (e) {}
+      }
+    }
+  }, [showProfileModal]);
 
   const confirmLogout = () => {
     if (orderContext?.tableId) {
@@ -48,46 +418,8 @@ export default function CustomerMenuScreen() {
     }
     setShowLogoutModal(false);
     setIsSessionClosed(true);
-
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      try {
-        window.close();
-      } catch (e) {}
-    }
   };
 
-  if (isSessionClosed) {
-    return (
-      <View style={styles.sessionClosedContainer}>
-        <View style={styles.sessionClosedCard}>
-          <View style={styles.sessionClosedIconWrap}>
-            <Ionicons name="checkmark-circle-outline" size={64} color="#10B981" />
-          </View>
-          <Text style={styles.sessionClosedTitle}>Session Closed</Text>
-          <Text style={styles.sessionClosedSubtitle}>
-            Thank you for dining with us! Your session has been closed. You may now close this browser tab.
-          </Text>
-          {Platform.OS === "web" && (
-            <TouchableOpacity
-              style={styles.closeWindowBtn}
-              onPress={() => {
-                try {
-                  window.close();
-                } catch (e) {}
-                window.location.href = "about:blank";
-              }}
-            >
-              <Ionicons name="power-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.closeWindowBtnText}>Close Tab</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
-  }
-
-
-  
   // Slide animation for floating cart
   const cartSlideAnim = useRef(new Animated.Value(100)).current;
 
@@ -138,6 +470,41 @@ export default function CustomerMenuScreen() {
     }
   }, [selectedKitchenId]);
 
+  if (isSessionClosed) {
+    // Check if it's a mobile browser (can't close tabs programmatically)
+    const isMobileBrowser =
+      typeof navigator !== "undefined" &&
+      /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
+    return (
+      <View style={styles.sessionClosedContainer}>
+        <View style={styles.sessionClosedCard}>
+          <View style={styles.sessionClosedIconWrap}>
+            <Ionicons name="checkmark-circle-outline" size={64} color="#10B981" />
+          </View>
+          <Text style={styles.sessionClosedTitle}>Session Closed</Text>
+          <Text style={styles.sessionClosedSubtitle}>
+            Thank you for dining with us!{"\n"}Your session has been closed.
+          </Text>
+          {!isMobileBrowser && (
+            <TouchableOpacity
+              style={styles.closeWindowBtn}
+              onPress={() => {
+                try { window.close(); } catch (e) {}
+              }}
+            >
+              <Ionicons name="power-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.closeWindowBtnText}>Close Tab</Text>
+            </TouchableOpacity>
+          )}
+          {isMobileBrowser && (
+            <Text style={styles.mobileCloseHint}>You may now close this tab manually.</Text>
+          )}
+        </View>
+      </View>
+    );
+  }
+
   const filteredDishes = allDishes.filter((dish: any) => {
     const query = search.trim().toLowerCase();
     if (query.length > 0) {
@@ -184,7 +551,10 @@ export default function CustomerMenuScreen() {
             <Text style={styles.tableBadge}>Table {orderContext.tableNo}</Text>
           )}
         </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <TouchableOpacity style={styles.requestButton} onPress={() => setShowProfileModal(true)}>
+            <Ionicons name="person-circle-outline" size={24} color={Theme.primary} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.requestButton} onPress={() => router.push("/customer/order-status" as any)}>
             <Ionicons name="receipt-outline" size={22} color={Theme.primary} />
           </TouchableOpacity>
@@ -343,15 +713,113 @@ export default function CustomerMenuScreen() {
               >
                 <Text style={styles.cancelLogoutText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmLogoutBtn}
-                onPress={confirmLogout}
-              >
-                <Text style={styles.confirmLogoutText}>Yes, Log Out</Text>
-              </TouchableOpacity>
+              {Platform.OS === "web" ? (
+                <LogoutButtonWeb onConfirm={confirmLogout} />
+              ) : (
+                <TouchableOpacity
+                  style={styles.confirmLogoutBtn}
+                  onPress={confirmLogout}
+                >
+                  <Text style={styles.confirmLogoutText}>Yes, Log Out</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Profile Details Modal */}
+      <Modal
+        visible={showProfileModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowProfileModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowProfileModal(false)}
+        >
+          <View style={{ backgroundColor: "#fff", borderRadius: 24, padding: 24, width: "100%", maxWidth: 360, shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 8 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <Text style={{ fontSize: 18, fontWeight: "bold", color: "#0F172A" }}>My Profile</Text>
+              <TouchableOpacity onPress={() => setShowProfileModal(false)} style={{ padding: 4 }}>
+                <Ionicons name="close" size={24} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ alignItems: "center", marginBottom: 24 }}>
+              <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: "#FFF2EC", justifyContent: "center", alignItems: "center", marginBottom: 12 }}>
+                <Ionicons name="person" size={32} color="#FF5E1A" />
+              </View>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: "#0F172A" }}>
+                {userInfo?.FullName || userInfo?.UserName || "Guest"}
+              </Text>
+              <Text style={{ fontSize: 13, color: "#64748B", marginTop: 4 }}>
+                {userInfo?.Phone ? "Registered Customer" : "Guest Diner"}
+              </Text>
+            </View>
+
+            <View style={{ gap: 14, marginBottom: 24 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <Ionicons name="call" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                <View>
+                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Phone Number</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
+                    {userInfo?.Phone || "Not provided"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <Ionicons name="mail" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                <View>
+                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Email Address</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
+                    {userInfo?.Email || "Not provided"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <Ionicons name="gift" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                <View>
+                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Promo Balance</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
+                    {userInfo?.PromoCode ? `${userInfo.PromoCode} ($${Number(userInfo.PromoAmount).toFixed(2)})` : "No promo active"}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <Ionicons name="time" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                <View>
+                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Session Started</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
+                    Today, {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <Ionicons name="location" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                <View>
+                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Dining Location</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
+                    Table {orderContext?.tableNo || "Default Table"} ({orderContext?.section || "SECTION_1"})
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={{ width: "100%", paddingVertical: 13, backgroundColor: "#FF5E1A", borderRadius: 12, alignItems: "center" }}
+              onPress={() => setShowProfileModal(false)}
+            >
+              <Text style={{ fontSize: 15, fontWeight: "700", color: "#fff" }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -718,5 +1186,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "bold",
   },
+  mobileCloseHint: {
+    fontSize: 13,
+    color: "#94A3B8",
+    textAlign: "center",
+    marginTop: 8,
+    fontStyle: "italic",
+  },
 });
+
 

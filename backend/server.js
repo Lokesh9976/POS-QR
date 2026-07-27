@@ -354,6 +354,11 @@ app.get("/health", (req, res) => {
 app.post("/api/checkout", (req, res) =>
   res.redirect(307, "/api/orders/checkout"),
 );
+// 🔥 QR LEGACY: QR app uses /api/order (singular) but routes are /api/orders (plural)
+app.use("/api/order", (req, res) => {
+  const newPath = "/api/orders" + req.path + (Object.keys(req.query).length ? "?" + new URLSearchParams(req.query).toString() : "");
+  res.redirect(307, newPath);
+});
 app.get("/tables", (req, res) => res.redirect("/api/tables/all"));
 app.get("/kitchens", (req, res) => res.redirect("/api/menu/kitchens"));
 app.get("/dishgroups/:id", (req, res) =>
