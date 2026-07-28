@@ -2171,10 +2171,18 @@ router.post("/save", async (req, res) => {
         }
       }
 
-      // 🆕 PROMO CODE AMOUNT DEDUCTION
-      if (discountRemarks && discountRemarks.startsWith("Promo:") && orderDiscountAmount > 0) {
-        const promoCode = discountRemarks.substring(6).trim();
-        console.log(`[SAVE SALE] Deducting Promo Code amount for code: ${promoCode}, Amount: ${orderDiscountAmount}`);
+      // 🆕 PROMO CODE AMOUNT DEDUCTION & USAGE COUNTER
+      if (discountRemarks && (discountRemarks.startsWith("Promo:") || discountRemarks.startsWith("Applied Promo Code:")) && orderDiscountAmount > 0) {
+        let promoCode = discountRemarks;
+        if (discountRemarks.startsWith("Promo:")) {
+          promoCode = discountRemarks.substring(6).trim();
+        } else if (discountRemarks.startsWith("Applied Promo Code:")) {
+          promoCode = discountRemarks.substring(19).trim();
+        }
+
+        console.log(`[SAVE SALE] Deducting/Recording Promo Code: ${promoCode}, Amount: ${orderDiscountAmount}`);
+        
+        // 1. Update MemberMaster balance
         await transaction.request()
           .input("PromoCode", sql.NVarChar(100), promoCode)
           .input("DeductAmount", sql.Decimal(18, 2), orderDiscountAmount)
@@ -2182,6 +2190,15 @@ router.post("/save", async (req, res) => {
             UPDATE MemberMaster 
             SET Promoamount = CASE WHEN Promoamount - @DeductAmount < 0 THEN 0 ELSE Promoamount - @DeductAmount END 
             WHERE Promocode = @PromoCode AND IsActive = 1
+          `);
+
+        // 2. Increment UsedCount in PromoCodeMaster
+        await transaction.request()
+          .input("PromoCode", sql.NVarChar(100), promoCode)
+          .query(`
+            UPDATE PromoCodeMaster 
+            SET UsedCount = ISNULL(UsedCount, 0) + 1 
+            WHERE PromoCode = @PromoCode AND IsActive = 1
           `);
       }
 

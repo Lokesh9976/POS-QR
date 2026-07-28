@@ -54,6 +54,8 @@ function App() {
   const [successMessage, setSuccessMessage] = useState("");
   const [enableKotQr, setEnableKotQr] = useState(0);
   const [enableCombo, setEnableCombo] = useState(0);
+  const [enableOnlinePayment, setEnableOnlinePayment] = useState(true);
+
   const [showComboCustomizer, setShowComboCustomizer] = useState(false);
   const [comboConfig, setComboConfig] = useState(null);
   const [comboSelections, setComboSelections] = useState({});
@@ -67,6 +69,44 @@ function App() {
   const [upiUpiId, setUpiUpiId] = useState('');
   const [tempPaynowUpiId, setTempPaynowUpiId] = useState('');
   const [tempUpiUpiId, setTempUpiUpiId] = useState('');
+
+  const [onlinePromoCode, setOnlinePromoCode] = useState("");
+  const [appliedOnlinePromo, setAppliedOnlinePromo] = useState(null);
+  const [validatingOnlinePromo, setValidatingOnlinePromo] = useState(false);
+  const [onlinePromoError, setOnlinePromoError] = useState("");
+
+  const handleApplyOnlinePromo = async () => {
+    const code = onlinePromoCode.trim().toUpperCase();
+    if (!code) return;
+    setValidatingOnlinePromo(true);
+    setOnlinePromoError("");
+    try {
+      const res = await fetch(`${API}/members/promocode/${encodeURIComponent(code)}`);
+      const data = await res.json();
+      if (res.ok && data.Promocode) {
+        const amt = Number(data.Promoamount || data.DiscountValue || 0);
+        if (amt <= 0) {
+          setOnlinePromoError("Promo code has no remaining balance.");
+          return;
+        }
+        setAppliedOnlinePromo({
+          code: data.Promocode,
+          amount: amt,
+          discountType: (data.DiscountType || "AMOUNT").toUpperCase()
+        });
+        localStorage.setItem("promoCode", data.Promocode);
+        localStorage.setItem("promoAmount", amt);
+        setOnlinePromoCode("");
+      } else {
+        setOnlinePromoError(data.error || "Invalid promo code.");
+      }
+    } catch (err) {
+      console.error(err);
+      setOnlinePromoError("Failed to verify promo code.");
+    } finally {
+      setValidatingOnlinePromo(false);
+    }
+  };
 
   const handlePaymentSuccess = (msg) => {
     setCart((prev) => prev.map((item) => ({ ...item, status: "SENT" })));
@@ -140,6 +180,15 @@ function App() {
         setEnableCombo(
           Number(data.EnableCombo || 0)
         );
+
+        // Fetch General Settings (EnableOnlinePayment)
+        try {
+          const genRes = await fetch(`${API}/settings`);
+          const genData = await genRes.json();
+          if (genData) {
+            setEnableOnlinePayment(genData.EnableOnlinePayment !== 0 && genData.enableOnlinePayment !== false);
+          }
+        } catch (e) {}
       } catch (err) {
         console.log(err);
       }
@@ -836,18 +885,14 @@ const existing = prev.find(
 
     const promoAmount = Number(localStorage.getItem("promoAmount") || 0);
 
-    // GST Calculation
-    const beforeGST = subTotal + serviceCharge;
+    // GST & Final Total Calculation
+    const netSubTotal = Math.max(0, subTotal - promoAmount);
+    const beforeGST = netSubTotal + serviceCharge;
 
-    const gstAmount =
-      beforeGST * (gstPercent / 100);
+    const gstAmount = beforeGST * (gstPercent / 100);
 
     // Final Total
-    const grandTotal = subTotal + serviceCharge;
-
-    const totalAmount = (
-      grandTotal - promoAmount
-    ).toFixed(2);
+    const totalAmount = (beforeGST + gstAmount).toFixed(2);
 
     console.log("Subtotal:", subTotal);
     console.log("Eligible:", eligibleAmount);
@@ -950,7 +995,7 @@ const existing = prev.find(
           tableNo: tableNo,
           tableId: tableId,
           totalAmount: parseFloat(amount),
-          paymentMethod: "ONLINE",
+          paymentMethod: "YEAHPAY PAYNOW",
           promoAmount,
           cart: cart
         })
@@ -1623,18 +1668,14 @@ console.log("Table ID:", tableId);
 const serviceCharge =
   serviceChargeEligibleTotal * (serviceChargePercent / 100);
 
-  // GST Calculation
-  const beforeGST = subTotal + serviceCharge;
-
-  const gstAmount =
-    beforeGST * (gstPercent / 100);
-
   const promoAmount = Number(localStorage.getItem("promoAmount") || 0);
+  const promoCodeUsed = localStorage.getItem("promoCode") || "";
+  const netSubTotal = Math.max(0, subTotal - promoAmount);
+  const beforeGST = netSubTotal + serviceCharge;
 
-  const totalAmount = Math.max(
-    0,
-    subTotal + serviceCharge + gstAmount - promoAmount
-  ).toFixed(2);
+  const gstAmount = beforeGST * (gstPercent / 100);
+
+  const totalAmount = (beforeGST + gstAmount).toFixed(2);
 
   console.log("Cart:", cart);
 console.log("Eligible Total:", serviceChargeEligibleTotal);
@@ -2031,6 +2072,13 @@ console.log("Service Charge:", serviceCharge);
                             <span>Subtotal</span>
                             <span>${subTotal.toFixed(2)}</span>
                           </div>
+
+                          {promoAmount > 0 && (
+                            <div className="cart-total-row" style={{ color: "#16a34a" }}>
+                              <span>Discount {promoCodeUsed ? `(${promoCodeUsed})` : ""}</span>
+                              <span>-${promoAmount.toFixed(2)}</span>
+                            </div>
+                          )}
                         
 
                           {serviceCharge > 0 && (
@@ -2462,21 +2510,53 @@ console.log("Service Charge:", serviceCharge);
                       <div style={{ flex: '1 1 300px', background: 'white', borderRadius: '20px', padding: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                         <h3 style={{ margin: '0', textTransform: 'uppercase', fontSize: '12px', color: '#666', letterSpacing: '0.5px' }}>Select Payment Method</h3>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: '10px' }}>
-                          {/* <div style={{ padding: '20px 10px', border: '2px solid #f97316', borderRadius: '12px', textAlign: 'center', background: '#fff5eb', color: '#f97316', fontWeight: 'bold', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
-                <MastercardBrand /> <span style={{ fontSize: '12px' }}>Credit Card</span>
-              </div> */}
                           <div
                             style={{ padding: '20px 10px', border: '1px solid #eee', borderRadius: '12px', textAlign: 'center', color: '#666', fontWeight: 'bold', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
                             onClick={() => setShowPayNowModal(true)}
                           >
                             <PayNowBrand /> <span style={{ fontSize: '12px' }}>PayNow</span>
                           </div>
-                          {/* <div
-                    style={{ padding: '20px 10px', border: '1px solid #eee', borderRadius: '12px', textAlign: 'center', color: '#666', fontWeight: 'bold', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
-                    onClick={() => setShowUpiModal(true)}
-                  >
-                    <GPayBrand /> <span style={{ fontSize: '12px' }}>GPay / UPI</span>
-                  </div> */}
+                        </div>
+
+                        {/* Promo Code Section */}
+                        <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '14px', border: '1px solid #e2e8f0', marginTop: '10px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: 'bold', color: '#1e293b', marginBottom: '8px' }}>Promo Code</div>
+                          {appliedOnlinePromo ? (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff2ec', padding: '10px', borderRadius: '8px', border: '1px solid #ffd2bd' }}>
+                              <div>
+                                <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b' }}>Applied: {appliedOnlinePromo.code}</div>
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>Discount: -${appliedOnlinePromo.amount.toFixed(2)}</div>
+                              </div>
+                              <button 
+                                style={{ background: '#ffe4e6', color: '#e11d48', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
+                                onClick={() => { setAppliedOnlinePromo(null); localStorage.removeItem("promoCode"); localStorage.removeItem("promoAmount"); }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : (
+                            <div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <input
+                                  type="text"
+                                  placeholder="Enter Promo Code (e.g. PROMO10)"
+                                  value={onlinePromoCode}
+                                  onChange={(e) => setOnlinePromoCode(e.target.value.toUpperCase())}
+                                  style={{ flex: 1, border: '1px solid #cbd5e1', borderRadius: '8px', padding: '8px 12px', fontSize: '13px' }}
+                                />
+                                <button
+                                  disabled={!onlinePromoCode.trim() || validatingOnlinePromo}
+                                  onClick={handleApplyOnlinePromo}
+                                  style={{ background: onlinePromoCode.trim() ? '#f97316' : '#cbd5e1', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 16px', fontWeight: 'bold', cursor: 'pointer' }}
+                                >
+                                  {validatingOnlinePromo ? '...' : 'Apply'}
+                                </button>
+                              </div>
+                              {onlinePromoError && (
+                                <div style={{ color: '#ef4444', fontSize: '12px', marginTop: '6px' }}>{onlinePromoError}</div>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div style={{ flex: 1 }}></div>

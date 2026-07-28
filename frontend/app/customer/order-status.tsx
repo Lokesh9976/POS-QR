@@ -11,11 +11,13 @@ import {
   Image,
   ActivityIndicator,
   Modal,
+  TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Theme } from "../../constants/theme";
 import { useCartStore } from "../../stores/cartStore";
 import { useOrderContextStore } from "../../stores/orderContextStore";
+import { useCompanySettingsStore } from "../../stores/companySettingsStore";
 import { socket } from "../../constants/socket";
 import { Ionicons } from "@expo/vector-icons";
 import { API_URL } from "../../constants/Config";
@@ -383,6 +385,9 @@ export default function CustomerOrderStatusScreen() {
   const router = useRouter();
   const { carts, currentContextId, fetchCartFromDB, checkoutOrder } = useCartStore();
   const orderContext = useOrderContextStore((state) => state.currentOrder);
+  const settings = useCompanySettingsStore((state: any) => state.settings);
+  const currencySymbol = settings?.currencySymbol ?? settings?.CurrencySymbol ?? "$";
+  const enableOnlinePayment = settings?.enableOnlinePayment !== false && settings?.EnableOnlinePayment !== false;
 
   const currentCart = currentContextId ? carts[currentContextId] || [] : [];
   const activeItems = currentCart.filter((item) => item.status && item.status !== "VOIDED");
@@ -410,6 +415,123 @@ export default function CustomerOrderStatusScreen() {
   const [loadingUpi, setLoadingUpi] = useState(false);
   const [paymentSent, setPaymentSent] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"cashier" | "online" | null>(null);
+  const [onlineStep, setOnlineStep] = useState<"summary" | "qr">("summary");
+
+  const [promoInput, setPromoInput] = useState("");
+  const [promoError, setPromoError] = useState("");
+  const [validatingPromo, setValidatingPromo] = useState(false);
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; amount: number; discountType?: string } | null>(null);
+  const [memberPromo, setMemberPromo] = useState<{ code: string; amount: number; discountType?: string } | null>(null);
+  const [userInfo, setUserInfo] = useState<any | null>(null);
+  const [promoModal, setPromoModal] = useState<{ visible: boolean; title: string; message: string; type: "success" | "error" }>({
+    visible: false,
+    title: "",
+    message: "",
+    type: "error",
+  });
+
+  const fetchMemberPromoDetails = () => {
+    if (typeof localStorage === "undefined") return;
+    const stored = localStorage.getItem("qr_pos_user");
+    if (!stored) return;
+    try {
+      const userObj = JSON.parse(stored);
+      setUserInfo(userObj);
+      const code = (userObj?.PromoCode || userObj?.Promocode || userObj?.promoCode || "").trim();
+      if (code) {
+        fetch(`${API_URL}/api/members/promocode/${encodeURIComponent(code)}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data && data.Promocode && Number(data.Promoamount || 0) > 0) {
+              setMemberPromo({
+                code: data.Promocode,
+                amount: Number(data.Promoamount || 0),
+                discountType: (data.DiscountType || "AMOUNT").toUpperCase(),
+              });
+            }
+          })
+          .catch(() => {});
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    fetchMemberPromoDetails();
+  }, []);
+
+  const showPromoAlert = (title: string, msg: string, type: "success" | "error" = "error") => {
+    setPromoModal({ visible: true, title, message: msg, type });
+  };
+
+  const handleApplyPromoCode = async (codeOverride?: string) => {
+    setPromoError("");
+    const targetCode = typeof codeOverride === "string" ? codeOverride : promoInput;
+    const codeToVerify = targetCode.trim().toUpperCase();
+    if (!codeToVerify) {
+      const errMsg = "Please enter a promo code.";
+      setPromoError(errMsg);
+      showPromoAlert("Invalid Promo Code", errMsg, "error");
+      return;
+    }
+    setValidatingPromo(true);
+    try {
+      const res = await fetch(`${API_URL}/api/members/promocode/${encodeURIComponent(codeToVerify)}`);
+      const data = await res.json();
+      if (res.ok && data.Promocode) {
+        const amt = Number(data.Promoamount || data.DiscountValue || 0);
+        if (amt <= 0) {
+          const errMsg = "This promo code has no remaining balance.";
+          setPromoError(errMsg);
+          showPromoAlert("Invalid Promo Code", errMsg, "error");
+          return;
+        }
+        const discType = (data.DiscountType || "AMOUNT").toUpperCase();
+        setAppliedPromo({ code: data.Promocode, amount: amt, discountType: discType });
+        setPromoInput("");
+        setPromoError("");
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("promoCode", data.Promocode);
+        }
+
+        // 🚀 Deduct promo amount in backend MemberMaster & update used counter
+        fetch(`${API_URL}/api/members/deduct-promo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            promoCode: data.Promocode,
+            amount: amt,
+          }),
+        }).catch((e) => console.error("Error deducting promo balance:", e));
+
+        // Update local state if member promo was used
+        setMemberPromo((prev) => {
+          if (!prev || prev.code !== data.Promocode) return prev;
+          const rem = prev.amount - amt;
+          return rem > 0 ? { ...prev, amount: rem } : null;
+        });
+
+        showPromoAlert("Promo Applied!", `Promo code ${data.Promocode} applied successfully.`, "success");
+      } else {
+        const errMsg = data.error || "Invalid or inactive promo code.";
+        setPromoError(errMsg);
+        showPromoAlert("Invalid Promo Code", errMsg, "error");
+      }
+    } catch (err) {
+      console.error("Promo verification error:", err);
+      const errMsg = "Could not verify promo code. Please try again.";
+      setPromoError(errMsg);
+      showPromoAlert("Error", errMsg, "error");
+    } finally {
+      setValidatingPromo(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem("promoCode");
+    }
+  };
 
   const confirmLogout = () => {
     if (orderContext?.tableId) {
@@ -574,9 +696,104 @@ export default function CustomerOrderStatusScreen() {
     setPaymentSent(true);
   };
 
+  // Active items and totals for Online Payment summary
+  const activeCartItems = currentCart.filter((item) => item.status && item.status !== "VOIDED" && (item as any).statusCode !== 0);
+  const orderSubtotal = activeCartItems.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.qty || 1)), 0);
+
+  const activePromoCode = appliedPromo?.code || "";
+  const activePromoAmount = appliedPromo?.amount || 0;
+  const activeDiscountType = (appliedPromo?.discountType || "AMOUNT").toUpperCase();
+  const isPercentageDiscount = activeDiscountType === "PERCENTAGE" || activeDiscountType === "PERCENT";
+
+  let rawDiscount = 0;
+  if (appliedPromo && activePromoCode && activePromoAmount > 0) {
+    if (isPercentageDiscount) {
+      rawDiscount = orderSubtotal * (activePromoAmount / 100);
+    } else {
+      rawDiscount = Math.min(orderSubtotal, activePromoAmount);
+    }
+  }
+  const orderDiscountAmt = Math.max(0, Math.min(orderSubtotal, rawDiscount));
+  const orderNetSubtotal = Math.max(0, orderSubtotal - orderDiscountAmt);
+
+  const serviceChargePercentage = Number(settings?.serviceChargePercentage ?? settings?.ServiceChargePercentage ?? 0);
+  const gstPercentage = Number(settings?.gstPercentage ?? settings?.GSTPercentage ?? 0);
+  const takeawayChargeRate = Number(settings?.takeawayCharges ?? settings?.TakeawayCharges ?? settings?.takeawayCharge ?? settings?.TakeawayCharge ?? 0);
+
+  const scEligibleSubtotal = activeCartItems.reduce((sum, item) => {
+    const isTakeaway = item.isTakeaway === true || String(item.isTakeaway) === "1" || String(item.isTakeaway).toLowerCase() === "true" || (item as any).IsTakeaway === true || String((item as any).IsTakeaway) === "1" || String((item as any).IsTakeaway).toLowerCase() === "true";
+    if (!isTakeaway) {
+      return sum + (item.price || 0) * (item.qty || 0);
+    }
+    return sum;
+  }, 0);
+
+  const takeawayItemsQty = activeCartItems.reduce((sum, item) => {
+    const isTakeaway = item.isTakeaway === true || String(item.isTakeaway) === "1" || String(item.isTakeaway).toLowerCase() === "true" || (item as any).IsTakeaway === true || String((item as any).IsTakeaway) === "1" || String((item as any).IsTakeaway).toLowerCase() === "true";
+    if (isTakeaway) {
+      return sum + (item.qty || 0);
+    }
+    return sum;
+  }, 0);
+  const takeawayChargeAmt = takeawayItemsQty * takeawayChargeRate;
+
+  const serviceChargeAmt = Math.max(0, scEligibleSubtotal - orderDiscountAmt) * (serviceChargePercentage / 100);
+  const totalBeforeGst = orderNetSubtotal + serviceChargeAmt + takeawayChargeAmt;
+  const gstAmt = totalBeforeGst * (gstPercentage / 100);
+  const grandTotal = totalBeforeGst + gstAmt;
+
   const handleOnlinePayment = () => {
     setPaymentMethod("online");
     setPaymentSent(true);
+    setOnlineStep("summary");
+  };
+
+  const handleTriggerYeahPay = () => {
+    const amountToPay = grandTotal.toFixed(2);
+    const currentOrdId = (orderContext as any)?.orderId || orderContext?.tableNo || "ORDER1";
+    const demoUrl = `https://yeahpay-demo-production.up.railway.app?amount=${amountToPay}&orderId=${encodeURIComponent(currentOrdId)}&posOrderId=${encodeURIComponent(currentOrdId)}&from=pos`;
+    
+    if (typeof window !== "undefined") {
+      const paymentWindow = window.open(demoUrl, '_blank', 'width=500,height=700');
+      if (!paymentWindow) {
+        Alert.alert("Popup Blocked", "Please allow popups for this site to open YeahPay payment.");
+        return;
+      }
+
+      const handleMessage = async (event: MessageEvent) => {
+        if (event.data && event.data.type === 'YEAHPAY_PAYMENT_SUCCESS') {
+          window.removeEventListener('message', handleMessage);
+          if (paymentWindow && !paymentWindow.closed) {
+            paymentWindow.close();
+          }
+
+          // Complete online payment in backend & close table
+          try {
+            await fetch(`${API_URL}/api/order/complete-online-payment`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                orderId: currentOrdId,
+                tableNo: orderContext?.tableNo,
+                tableId: orderContext?.tableId,
+                totalAmount: grandTotal,
+                paymentMethod: "Yeahpay Paynow"
+              })
+            });
+          } catch (e) {
+            console.error("Online payment completion error:", e);
+          }
+
+          setShowPaymentModal(false);
+          setPaymentSent(false);
+          setPaymentMethod(null);
+          executeSendRequest("Paid Online via YeahPay");
+          Alert.alert("Payment Successful!", `Thank you! Your payment of ${currencySymbol}${amountToPay} via YeahPay was received.`);
+        }
+      };
+
+      window.addEventListener('message', handleMessage);
+    }
   };
 
   const handleSendRequest = async (type: string) => {
@@ -810,17 +1027,19 @@ export default function CustomerOrderStatusScreen() {
                   <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
                 </TouchableOpacity>
 
-                {/* Online Payment */}
-                <TouchableOpacity style={styles.payOptionBtn} onPress={handleOnlinePayment}>
-                  <View style={styles.payOptionIcon}>
-                    <Ionicons name="qr-code-outline" size={28} color="#8B5CF6" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.payOptionTitle}>Online Payment</Text>
-                    <Text style={styles.payOptionDesc}>Pay via UPI / QR code</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                </TouchableOpacity>
+                {/* Online Payment (Only rendered when enableOnlinePayment setting is ON) */}
+                {enableOnlinePayment && (
+                  <TouchableOpacity style={styles.payOptionBtn} onPress={handleOnlinePayment}>
+                    <View style={styles.payOptionIcon}>
+                      <Ionicons name="qr-code-outline" size={28} color="#8B5CF6" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.payOptionTitle}>Online Payment</Text>
+                      <Text style={styles.payOptionDesc}>Pay via PayNow / QR code</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity
                   style={[styles.modalButton, styles.cancelBtn, { marginTop: 8, width: "100%" }]}
@@ -844,38 +1063,191 @@ export default function CustomerOrderStatusScreen() {
                   <Text style={styles.confirmBtnText}>Done</Text>
                 </TouchableOpacity>
               </>
+            ) : onlineStep === "summary" ? (
+              /* Online Payment Step 1: Bill & Promo Code Summary */
+              <View style={{ width: "100%", alignItems: "center" }}>
+                <View style={[styles.iconContainer, { backgroundColor: "#EDE9FE" }]}>
+                  <Ionicons name="receipt-outline" size={32} color="#8B5CF6" />
+                </View>
+                <Text style={styles.modalTitle}>Bill Summary</Text>
+                <Text style={styles.modalSubtitle}>Review your order bill and apply promo code before payment.</Text>
+
+                {/* Promo Code Section */}
+                <View style={{ width: "100%", marginVertical: 12 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#1E293B", marginBottom: 6 }}>Promo Code</Text>
+                  {appliedPromo ? (
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#FFF2EC", padding: 10, borderRadius: 10, borderWidth: 1, borderColor: "#FFD2BD" }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: "#1E293B" }}>Promo Applied: {appliedPromo.code}</Text>
+                        <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>Discount: -{currencySymbol}{orderDiscountAmt.toFixed(2)}</Text>
+                      </View>
+                      <TouchableOpacity style={{ backgroundColor: "#FFE4E6", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }} onPress={handleRemovePromo}>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#E11D48" }}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <>
+                      <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                        <TextInput
+                          style={{ flex: 1, backgroundColor: "#FFF", borderWidth: 1, borderColor: promoError ? "#EF4444" : "#CBD5E1", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: "#0F172A" }}
+                          placeholder="Enter Promo Code (e.g. PROMO10)"
+                          placeholderTextColor="#94A3B8"
+                          value={promoInput}
+                          onChangeText={(t) => { setPromoInput(t); setPromoError(""); }}
+                          autoCapitalize="characters"
+                        />
+                        <TouchableOpacity
+                          style={{ backgroundColor: promoInput.trim() ? Theme.primary : "#CBD5E1", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, justifyContent: "center", alignItems: "center" }}
+                          disabled={!promoInput.trim() || validatingPromo}
+                          onPress={() => handleApplyPromoCode()}
+                        >
+                          {validatingPromo ? (
+                            <ActivityIndicator size="small" color="#FFF" />
+                          ) : (
+                            <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 13 }}>Apply</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                      {!!promoError && (
+                        <Text style={{ color: "#EF4444", fontSize: 12, fontWeight: "600", marginTop: 6 }}>
+                          ⚠️ {promoError}
+                        </Text>
+                      )}
+
+                      {memberPromo && !appliedPromo && (
+                        <TouchableOpacity
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            backgroundColor: "#F0FDF4",
+                            borderWidth: 1,
+                            borderColor: "#86EFAC",
+                            borderRadius: 10,
+                            paddingHorizontal: 12,
+                            paddingVertical: 10,
+                            marginTop: 10,
+                          }}
+                          disabled={validatingPromo}
+                          onPress={() => handleApplyPromoCode(memberPromo.code)}
+                        >
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                            <Ionicons name="pricetag-outline" size={18} color="#16A34A" />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontWeight: "700", color: "#166534" }}>
+                                Member Promo: {memberPromo.code}
+                              </Text>
+                              <Text style={{ fontSize: 11, color: "#15803D", marginTop: 1 }}>
+                                Available Balance: ${memberPromo.amount.toFixed(2)}
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={{ backgroundColor: "#16A34A", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                            <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "700" }}>Use Promo</Text>
+                          </View>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+                </View>
+
+                {/* Bill Details Breakdown */}
+                <View style={{ width: "100%", backgroundColor: "#F8FAFC", padding: 12, borderRadius: 12, marginBottom: 16 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                    <Text style={{ color: "#64748B", fontSize: 13 }}>Gross Subtotal</Text>
+                    <Text style={{ color: "#0F172A", fontSize: 13, fontWeight: "600" }}>{currencySymbol}{orderSubtotal.toFixed(2)}</Text>
+                  </View>
+                  {orderDiscountAmt > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                      <Text style={{ color: "#FF5E1A", fontSize: 13, fontWeight: "700" }}>Promo Discount ({appliedPromo?.code})</Text>
+                      <Text style={{ color: "#FF5E1A", fontSize: 13, fontWeight: "700" }}>-{currencySymbol}{orderDiscountAmt.toFixed(2)}</Text>
+                    </View>
+                  )}
+                  {serviceChargeAmt > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                      <Text style={{ color: "#64748B", fontSize: 13 }}>Item Service Charge ({serviceChargePercentage}%)</Text>
+                      <Text style={{ color: "#0F172A", fontSize: 13, fontWeight: "600" }}>{currencySymbol}{serviceChargeAmt.toFixed(2)}</Text>
+                    </View>
+                  )}
+                  {takeawayChargeAmt > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                      <Text style={{ color: "#64748B", fontSize: 13 }}>Takeaway Charge</Text>
+                      <Text style={{ color: "#0F172A", fontSize: 13, fontWeight: "600" }}>{currencySymbol}{takeawayChargeAmt.toFixed(2)}</Text>
+                    </View>
+                  )}
+                  {gstAmt > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 }}>
+                      <Text style={{ color: "#64748B", fontSize: 13 }}>GST ({gstPercentage}%)</Text>
+                      <Text style={{ color: "#0F172A", fontSize: 13, fontWeight: "600" }}>{currencySymbol}{gstAmt.toFixed(2)}</Text>
+                    </View>
+                  )}
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderColor: "#E2E8F0", marginTop: 6, paddingTop: 8 }}>
+                    <Text style={{ color: "#0F172A", fontSize: 15, fontWeight: "bold" }}>Payable Amount</Text>
+                    <Text style={{ color: Theme.primary, fontSize: 16, fontWeight: "bold" }}>{currencySymbol}{grandTotal.toFixed(2)}</Text>
+                  </View>
+                </View>
+
+                {/* Action Buttons */}
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.confirmBtn, { width: "100%" }]}
+                  onPress={() => setOnlineStep("qr")}
+                >
+                  <Text style={styles.confirmBtnText}>Proceed to Pay • {currencySymbol}{grandTotal.toFixed(2)}</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelBtn, { marginTop: 8, width: "100%" }]}
+                  onPress={() => { setShowPaymentModal(false); setPaymentSent(false); setPaymentMethod(null); }}
+                >
+                  <Text style={styles.cancelBtnText}>Back</Text>
+                </TouchableOpacity>
+              </View>
             ) : (
-              /* Online Payment / UPI QR */
-              <>
+              /* Online Payment Step 2: Scan & Pay */
+              <View style={{ width: "100%", alignItems: "center" }}>
                 <View style={[styles.iconContainer, { backgroundColor: "#EDE9FE" }]}>
                   <Ionicons name="qr-code" size={36} color="#8B5CF6" />
                 </View>
                 <Text style={styles.modalTitle}>Scan to Pay</Text>
+
                 {loadingUpi ? (
                   <ActivityIndicator color={Theme.primary} style={{ marginVertical: 24 }} />
                 ) : upiId ? (
                   <>
                     <Text style={[styles.modalSubtitle, { marginBottom: 8 }]}>
-                      Scan QR with any UPI app
+                      Scan QR code to pay {currencySymbol}{grandTotal.toFixed(2)}
                     </Text>
                     <Image
-                      source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=${encodeURIComponent(upiId)}&cu=INR` }}
+                      source={{ uri: `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=paynow://pay?pa=${encodeURIComponent(upiId)}&am=${grandTotal.toFixed(2)}` }}
                       style={styles.upiQr}
                     />
                     <Text style={styles.upiIdText}>{upiId}</Text>
                   </>
-                ) : (
-                  <Text style={[styles.modalSubtitle, { color: "#EF4444" }]}>
-                    Online payment not configured. Please pay at the cashier.
-                  </Text>
-                )}
+                ) : null}
+
+                {/* YeahPay PayNow Trigger Button */}
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: "#8B5CF6", width: "100%", marginTop: 12, flexDirection: "row", justifyContent: "center", alignItems: "center" }]}
+                  onPress={handleTriggerYeahPay}
+                >
+                  <Ionicons name="card-outline" size={20} color="#FFF" style={{ marginRight: 8 }} />
+                  <Text style={[styles.confirmBtnText, { color: "#FFF" }]}>Pay with YeahPay (PayNow)</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelBtn, { width: "100%", marginTop: 8 }]}
+                  onPress={() => setOnlineStep("summary")}
+                >
+                  <Text style={styles.cancelBtnText}>Back to Bill Summary</Text>
+                </TouchableOpacity>
+
                 <TouchableOpacity
                   style={[styles.modalButton, styles.confirmBtn, { width: "100%", marginTop: 8 }]}
                   onPress={() => { setShowPaymentModal(false); setPaymentSent(false); setPaymentMethod(null); }}
                 >
                   <Text style={styles.confirmBtnText}>Done</Text>
                 </TouchableOpacity>
-              </>
+              </View>
             )}
           </View>
         </View>
@@ -916,6 +1288,46 @@ export default function CustomerOrderStatusScreen() {
                 </TouchableOpacity>
               )}
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Custom Promo Code Alert Modal */}
+      <Modal
+        visible={promoModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPromoModal((prev) => ({ ...prev, visible: false }))}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.logoutModalCard}>
+            <View
+              style={[
+                styles.logoutIconCircle,
+                { backgroundColor: promoModal.type === "success" ? "#D1FAE5" : "#FEE2E2" },
+              ]}
+            >
+              <Ionicons
+                name={promoModal.type === "success" ? "checkmark-circle" : "close-circle-outline"}
+                size={36}
+                color={promoModal.type === "success" ? "#10B981" : "#DC2626"}
+              />
+            </View>
+            <Text style={styles.logoutModalTitle}>{promoModal.title}</Text>
+            <Text style={styles.logoutModalSubtitle}>{promoModal.message}</Text>
+            <TouchableOpacity
+              style={[
+                styles.modalButton,
+                {
+                  backgroundColor: promoModal.type === "success" ? "#10B981" : Theme.primary,
+                  width: "100%",
+                  marginTop: 16,
+                },
+              ]}
+              onPress={() => setPromoModal((prev) => ({ ...prev, visible: false }))}
+            >
+              <Text style={[styles.confirmBtnText, { color: "#FFF" }]}>OK</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

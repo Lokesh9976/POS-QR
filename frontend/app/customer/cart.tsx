@@ -27,16 +27,27 @@ export default function CustomerCartScreen() {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [userInfo, setUserInfo] = useState<{ UserName: string; FullName: string; Phone: string; Email?: string; PromoCode?: string; PromoAmount?: number } | null>(null);
+  const [userInfo, setUserInfo] = useState<any>(null);
   const [applyPromo, setApplyPromo] = useState(false);
+  const [promoInput, setPromoInput] = useState("");
+  const [validatingPromo, setValidatingPromo] = useState(false);
+  const [appliedPromo, setAppliedPromo] = useState<{ code: string; amount: number; discountType?: string } | null>(null);
 
   React.useEffect(() => {
     if (typeof localStorage !== "undefined") {
       const stored = localStorage.getItem("qr_pos_user");
+      let userObj: any = null;
       if (stored) {
         try {
-          setUserInfo(JSON.parse(stored));
+          userObj = JSON.parse(stored);
+          setUserInfo(userObj);
         } catch (e) {}
+      }
+      const savedPromo = localStorage.getItem("promoCode");
+      if (savedPromo) {
+        const amount = Number(userObj?.PromoAmount ?? userObj?.Promoamount ?? userObj?.promoAmount ?? 0);
+        setAppliedPromo({ code: savedPromo, amount, discountType: "AMOUNT" });
+        setApplyPromo(true);
       }
     }
   }, []);
@@ -49,9 +60,26 @@ export default function CustomerCartScreen() {
   const gstPercentage = Number(settings?.gstPercentage ?? settings?.GSTPercentage ?? 0);
   const takeawayChargeRate = Number(settings?.takeawayCharges ?? settings?.TakeawayCharges ?? settings?.takeawayCharge ?? settings?.TakeawayCharge ?? 0);
   const currencySymbol = settings?.currencySymbol ?? settings?.CurrencySymbol ?? "$";
+  const showPromoCodeFeature = settings?.showPromoCode !== false && settings?.ShowPromoCode !== false;
 
-  const discountAmt = applyPromo ? Math.min(subtotal, Number(userInfo?.PromoAmount || 0)) : 0;
-  const netSubtotal = subtotal - discountAmt;
+  const memberCode = userInfo?.PromoCode || userInfo?.Promocode || userInfo?.promoCode || "";
+  const memberAmount = Number(userInfo?.PromoAmount ?? userInfo?.Promoamount ?? userInfo?.promoAmount ?? 0);
+
+  const activePromoCode = appliedPromo?.code || (applyPromo && memberCode ? memberCode : "") || (typeof localStorage !== "undefined" ? localStorage.getItem("promoCode") || "" : "");
+  const activePromoAmount = appliedPromo?.amount ?? (memberCode ? memberAmount : 0);
+  const activeDiscountType = (appliedPromo?.discountType || "AMOUNT").toUpperCase();
+  const isPercentageDiscount = activeDiscountType === "PERCENTAGE" || activeDiscountType === "PERCENT";
+
+  let rawDiscount = 0;
+  if (applyPromo && activePromoCode && activePromoAmount > 0) {
+    if (isPercentageDiscount) {
+      rawDiscount = subtotal * (activePromoAmount / 100);
+    } else {
+      rawDiscount = Math.min(subtotal, activePromoAmount);
+    }
+  }
+  const discountAmt = Math.max(0, Math.min(subtotal, rawDiscount));
+  const netSubtotal = Math.max(0, subtotal - discountAmt);
 
   // Calculate service charge eligible subtotal (all dine-in items that are not takeaway)
   const scEligibleSubtotal = currentCart.reduce((sum, item) => {
@@ -83,6 +111,61 @@ export default function CustomerCartScreen() {
     updateCartItemQty(lineItemId, newQty);
   };
 
+  const handleApplyPromoCode = async () => {
+    const codeToVerify = promoInput.trim().toUpperCase();
+    if (!codeToVerify) {
+      Alert.alert("Invalid Code", "Please enter a promo code.");
+      return;
+    }
+    setValidatingPromo(true);
+    try {
+      const res = await fetch(`${API_URL}/api/members/promocode/${encodeURIComponent(codeToVerify)}`);
+      const data = await res.json();
+      if (res.ok && data.Promocode) {
+        const amt = Number(data.Promoamount || data.DiscountValue || 0);
+        if (amt <= 0) {
+          Alert.alert("Invalid Promo", "This promo code has no remaining balance.");
+          return;
+        }
+        const discType = (data.DiscountType || "AMOUNT").toUpperCase();
+        setAppliedPromo({ code: data.Promocode, amount: amt, discountType: discType });
+        setApplyPromo(true);
+        setPromoInput("");
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("promoCode", data.Promocode);
+        }
+
+        // 🚀 Deduct promo amount in backend MemberMaster
+        fetch(`${API_URL}/api/members/deduct-promo`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            promoCode: data.Promocode,
+            amount: amt,
+          }),
+        }).catch((e) => console.error("Error deducting promo balance:", e));
+
+        const discLabel = discType === "PERCENTAGE" || discType === "PERCENT" ? `${amt}%` : `${currencySymbol}${amt.toFixed(2)}`;
+        Alert.alert("Promo Applied!", `Promo code ${data.Promocode} (${discLabel} off) applied successfully.`);
+      } else {
+        Alert.alert("Invalid Code", data.error || "Invalid or inactive promo code.");
+      }
+    } catch (err) {
+      console.error("Promo verification error:", err);
+      Alert.alert("Error", "Could not verify promo code. Please try again.");
+    } finally {
+      setValidatingPromo(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setApplyPromo(false);
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem("promoCode");
+    }
+  };
+
   const handlePlaceOrder = async () => {
     if (currentCart.length === 0) {
       Alert.alert("Cart Empty", "Please add items to your cart first.");
@@ -108,7 +191,7 @@ export default function CustomerCartScreen() {
           orderType: "DINE_IN",
           entryStatus: "q",
           discountAmount: discountAmt,
-          discountRemarks: applyPromo && userInfo?.PromoCode ? `Applied Promo Code: ${userInfo.PromoCode}` : null,
+          discountRemarks: applyPromo && activePromoCode ? `Applied Promo Code: ${activePromoCode}` : null,
           items: currentCart.map(item => ({
             id: item.id,
             lineItemId: item.lineItemId || item.id,
@@ -126,12 +209,25 @@ export default function CustomerCartScreen() {
 
       if (sendResponse.ok) {
         // Update local storage promo amount on successful send
-        if (applyPromo && userInfo) {
-          const updatedAmount = Math.max(0, Number(userInfo.PromoAmount || 0) - discountAmt);
-          const updatedUser = { ...userInfo, PromoAmount: updatedAmount };
-          localStorage.setItem("qr_pos_user", JSON.stringify(updatedUser));
-          setUserInfo(updatedUser);
-          setApplyPromo(false);
+        if (applyPromo && activePromoCode) {
+          const updatedAmount = Math.max(0, activePromoAmount - discountAmt);
+          if (userInfo && typeof localStorage !== "undefined") {
+            const updatedUser = { 
+              ...userInfo, 
+              PromoCode: activePromoCode, 
+              PromoAmount: updatedAmount,
+              Promocode: activePromoCode,
+              Promoamount: updatedAmount 
+            };
+            localStorage.setItem("qr_pos_user", JSON.stringify(updatedUser));
+            setUserInfo(updatedUser);
+          }
+          if (appliedPromo) {
+            setAppliedPromo({ code: activePromoCode, amount: updatedAmount });
+          }
+          if (updatedAmount <= 0) {
+            setApplyPromo(false);
+          }
         }
 
         // Clear local unsent cart items and skip background save-cart to prevent race conditions
@@ -190,7 +286,7 @@ export default function CustomerCartScreen() {
                 <View style={styles.comboSelectionsContainer}>
                   {item.comboSelections.map((group: any, gIdx: number) => {
                     const groupItemsText = group.items?.map((opt: any) => {
-                      return opt.name + (Number(opt.surcharge) > 0 ? ` (+$${Number(opt.surcharge).toFixed(2)})` : "");
+                      return opt.name + (Number(opt.surcharge) > 0 ? ` (+${currencySymbol}${Number(opt.surcharge).toFixed(2)})` : "");
                     }).join(", ");
                     return (
                       <Text key={gIdx} style={styles.comboSelectionText}>
@@ -208,7 +304,7 @@ export default function CustomerCartScreen() {
                 </Text>
               )}
 
-              <Text style={styles.itemPrice}>${(Number(item.price || 0) * (item.qty || 1)).toFixed(2)}</Text>
+              <Text style={styles.itemPrice}>{currencySymbol}{(Number(item.price || 0) * (item.qty || 1)).toFixed(2)}</Text>
             </View>
 
             {/* Quantity control */}
@@ -243,34 +339,18 @@ export default function CustomerCartScreen() {
                 placeholderTextColor="#94A3B8"
               />
 
-               {/* Bill Details */}
+
+
+              {/* Bill Details */}
               <Text style={styles.sectionTitle}>Bill Details</Text>
               <View style={styles.billRow}>
                 <Text style={styles.billLabel}>Gross Total</Text>
                 <Text style={styles.billValue}>{currencySymbol}{subtotal.toFixed(2)}</Text>
               </View>
-              {userInfo?.PromoCode && Number(userInfo?.PromoAmount) > 0 && (
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#FFF2EC", padding: 12, borderRadius: 12, marginVertical: 8, borderWidth: 1, borderColor: "#FFD2BD" }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Ionicons name="gift" size={20} color="#FF5E1A" />
-                    <View>
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#334155" }}>Apply Promo Coupon ({userInfo.PromoCode})</Text>
-                      <Text style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>Available Balance: {currencySymbol}{Number(userInfo.PromoAmount).toFixed(2)}</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity 
-                    style={{ backgroundColor: applyPromo ? "#FF5E1A" : "#fff", borderWidth: 1.5, borderColor: "#FF5E1A", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
-                    onPress={() => setApplyPromo(!applyPromo)}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: "700", color: applyPromo ? "#fff" : "#FF5E1A" }}>
-                      {applyPromo ? "Applied" : "Apply"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+              
               {applyPromo && discountAmt > 0 && (
                 <View style={styles.billRow}>
-                  <Text style={[styles.billLabel, { color: "#FF5E1A", fontWeight: "700" }]}>Promo Discount</Text>
+                  <Text style={[styles.billLabel, { color: "#FF5E1A", fontWeight: "700" }]}>Promo Discount ({activePromoCode})</Text>
                   <Text style={[styles.billValue, { color: "#FF5E1A", fontWeight: "700" }]}>-{currencySymbol}{discountAmt.toFixed(2)}</Text>
                 </View>
               )}

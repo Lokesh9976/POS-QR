@@ -186,19 +186,104 @@ router.get("/promocode/:code", async (req, res) => {
   try {
     const { code } = req.params;
     const pool = await poolPromise;
-    const result = await pool.request()
-      .input("code", sql.NVarChar, code)
+    const cleanCode = code ? code.trim() : "";
+    if (!cleanCode) {
+      return res.status(400).json({ error: "Promo code is required" });
+    }
+
+    // 1. Check PromoCodeMaster first (for global promo codes configured in system)
+    const promoResult = await pool.request()
+      .input("code", sql.NVarChar, cleanCode)
+      .query(`
+        SELECT PromoId, PromoCode AS Promocode, PromoName, DiscountType, DiscountValue AS Promoamount, MaxUsage, UsedCount, IsActive
+        FROM PromoCodeMaster
+        WHERE PromoCode = @code AND IsActive = 1
+      `);
+
+    if (promoResult.recordset.length > 0) {
+      const promo = promoResult.recordset[0];
+      if (promo.MaxUsage !== null && promo.MaxUsage !== undefined && promo.UsedCount >= promo.MaxUsage) {
+        return res.status(400).json({ error: "This promo code has reached maximum usage limit" });
+      }
+      return res.json({
+        MemberId: null,
+        Name: promo.PromoName || "Promo Code",
+        Phone: "",
+        Promocode: promo.Promocode,
+        Promoamount: Number(promo.Promoamount || 0),
+        DiscountType: (promo.DiscountType || "AMOUNT").toUpperCase(),
+        MaxUsage: promo.MaxUsage,
+        UsedCount: promo.UsedCount
+      });
+    }
+
+    // 2. Check MemberMaster if not found in PromoCodeMaster
+    const memberResult = await pool.request()
+      .input("code", sql.NVarChar, cleanCode)
       .query(`
         SELECT MemberId, Name, Phone, Promocode, Promoamount 
         FROM MemberMaster 
         WHERE Promocode = @code AND IsActive = 1
       `);
-    if (result.recordset.length === 0) {
-      return res.status(404).json({ error: "Invalid or inactive promo code" });
+
+    if (memberResult.recordset.length > 0) {
+      const member = memberResult.recordset[0];
+      if (Number(member.Promoamount || 0) <= 0) {
+        return res.status(400).json({ error: "Promo code balance has been exhausted" });
+      }
+      return res.json({
+        MemberId: member.MemberId,
+        Name: member.Name,
+        Phone: member.Phone,
+        Promocode: member.Promocode,
+        Promoamount: Number(member.Promoamount || 0),
+        DiscountType: "AMOUNT"
+      });
     }
-    res.json(result.recordset[0]);
+
+    return res.status(404).json({ error: "Invalid or inactive promo code" });
   } catch (err) {
     console.error("[PROMOCODE LOOKUP ERROR]", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Deduct promo amount in MemberMaster and increment UsedCount in PromoCodeMaster
+router.post("/deduct-promo", async (req, res) => {
+  try {
+    const { promoCode, amount } = req.body;
+    const cleanCode = promoCode ? promoCode.trim() : "";
+    const deductAmt = Number(amount || 0);
+
+    if (!cleanCode || deductAmt <= 0) {
+      return res.status(400).json({ error: "Invalid promo code or amount" });
+    }
+
+    const pool = await poolPromise;
+    const result = await pool.request()
+      .input("PromoCode", sql.NVarChar(100), cleanCode)
+      .input("DeductAmount", sql.Decimal(18, 2), deductAmt)
+      .query(`
+        UPDATE MemberMaster 
+        SET Promoamount = CASE WHEN Promoamount - @DeductAmount < 0 THEN 0 ELSE Promoamount - @DeductAmount END,
+            ModifiedOn = GETDATE()
+        WHERE Promocode = @PromoCode AND IsActive = 1;
+
+        UPDATE PromoCodeMaster 
+        SET UsedCount = ISNULL(UsedCount, 0) + 1 
+        WHERE PromoCode = @PromoCode AND IsActive = 1;
+
+        SELECT MemberId, Promocode, Promoamount FROM MemberMaster WHERE Promocode = @PromoCode;
+      `);
+
+    const updatedMember = result.recordset.length > 0 ? result.recordset[0] : null;
+    return res.json({
+      success: true,
+      message: "Promo amount deducted successfully from MemberMaster",
+      remainingBalance: updatedMember ? Number(updatedMember.Promoamount || 0) : 0,
+    });
+  } catch (err) {
+    console.error("[DEDUCT PROMO ERROR]", err);
     res.status(500).json({ error: err.message });
   }
 });

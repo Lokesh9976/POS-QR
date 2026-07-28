@@ -941,29 +941,19 @@ export default function SummaryScreen() {
           items: items,
           kitchenName: kName,
         };
-        if (enableKOT) {
-          await UniversalPrinter.printKOT(
-            kotData,
-            "SYSTEM",
-            "REPRINT",
-            printerIp,
-          );
-        }
+        await UniversalPrinter.printKOT(
+          kotData,
+          "SYSTEM",
+          "REPRINT",
+          printerIp,
+        );
       }
 
-      if (enableKOT) {
-        showToast({
-          type: "success",
-          message: "KOT Reprinted",
-          subtitle: "Tickets sent to kitchen",
-        });
-      } else {
-        showToast({
-          type: "info",
-          message: "KOT Printing Disabled",
-          subtitle: "Please enable it in General Settings",
-        });
-      }
+      showToast({
+        type: "success",
+        message: "KOT Reprinted",
+        subtitle: "Tickets sent to kitchen",
+      });
       setShowBillOptions(false);
     } catch (err) {
       console.error("Reprint KOT error:", err);
@@ -991,25 +981,11 @@ export default function SummaryScreen() {
         memberRewardBalance: String(rewardMember?.RewardCredit || 0),
       };
 
-      if (enableCheckoutBill) {
-        await UniversalPrinter.printCheckoutBill(
-          saleData,
-          user?.userId || "SYSTEM",
-          discountInfo,
-        );
-      }
-
-      if (context?.tableId) {
-        const token = useAuthStore.getState().token;
-        await fetch(`${API_URL}/api/orders/checkout`, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-            ...(token ? { "Authorization": `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({ tableId: context.tableId }),
-        });
-      }
+      await UniversalPrinter.printCheckoutBill(
+        saleData,
+        user?.userId || "SYSTEM",
+        discountInfo,
+      );
 
       showToast({
         type: "success",

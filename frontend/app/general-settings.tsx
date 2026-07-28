@@ -101,6 +101,7 @@ export default function GeneralSettingsScreen() {
   const [showLoyalty, setShowLoyalty] = useState(settings.showLoyalty !== undefined ? settings.showLoyalty : true);
   const [showRewardPoints, setShowRewardPoints] = useState(settings.showRewardPoints !== undefined ? settings.showRewardPoints : true);
   const [showPromoCode, setShowPromoCode] = useState(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
+  const [enableOnlinePayment, setEnableOnlinePayment] = useState(settings.enableOnlinePayment !== undefined ? settings.enableOnlinePayment : true);
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordValue, setPasswordValue] = useState("");
@@ -125,6 +126,7 @@ export default function GeneralSettingsScreen() {
     setShowLoyalty(settings.showLoyalty !== undefined ? settings.showLoyalty : true);
     setShowRewardPoints(settings.showRewardPoints !== undefined ? settings.showRewardPoints : true);
     setShowPromoCode(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
+    setEnableOnlinePayment(settings.enableOnlinePayment !== undefined ? settings.enableOnlinePayment : true);
 
     let initialCheckoutFlow = settings.enableCheckoutFlow;
     let initialDirectProcess = settings.enableDirectProcessToPay;
@@ -210,6 +212,7 @@ export default function GeneralSettingsScreen() {
       showLoyalty,
       showRewardPoints,
       showPromoCode,
+      enableOnlinePayment,
     });
     setSaving(false);
 
@@ -222,6 +225,13 @@ export default function GeneralSettingsScreen() {
   };
 
   const settingsList = [
+    {
+      title: "QR Online Payment",
+      desc: "Allow QR ordering customers to pay online (PayNow). When OFF, orders use Pay at Cashier.",
+      icon: "card-outline",
+      value: enableOnlinePayment,
+      onToggle: setEnableOnlinePayment,
+    },
     {
       title: "KOT (Kitchen Order Ticket)",
       desc: "Enable kitchen ticket printing.",

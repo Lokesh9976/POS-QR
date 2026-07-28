@@ -1003,27 +1003,28 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
   }, [cart]);
 
   const currentTableStatus = useMemo(() => {
-    if (!tableData) return "EMPTY";
+    if (!tableData) return cart.length > 0 ? "SENT" : "EMPTY";
 
-    // Normalize status if it comes from the database as a number
-    const s = tableData.status;
-    if (
-      typeof s === "number" ||
-      typeof (tableData as any).Status === "number"
-    ) {
-      const val = typeof s === "number" ? s : (tableData as any).Status;
-      const statusMap: Record<number, string> = {
-        0: "EMPTY",
-        1: "SENT",
-        2: "BILL_REQUESTED",
-        3: "HOLD",
-        4: "LOCKED",
-        5: "SENT",
-      };
-      return statusMap[val] || "EMPTY";
-    }
-    return s || "EMPTY";
-  }, [tableData]);
+    const s = tableData.status !== undefined ? tableData.status : (tableData as any).Status;
+    const strVal = String(s ?? "").trim().toUpperCase();
+
+    const statusMap: Record<string, string> = {
+      "0": "EMPTY",
+      "1": "SENT",
+      "2": "BILL_REQUESTED",
+      "3": "HOLD",
+      "4": "LOCKED",
+      "5": "SENT",
+      "DINING": "SENT",
+      "OCCUPIED": "SENT",
+      "SENT": "SENT",
+      "HOLD": "HOLD",
+      "BILL_REQUESTED": "BILL_REQUESTED",
+      "CHECKOUT": "BILL_REQUESTED",
+    };
+
+    return statusMap[strVal] || (strVal || (cart.length > 0 ? "SENT" : "EMPTY"));
+  }, [tableData, cart.length]);
 
   // 🟢 OPTIMIZED: Select only the specific active order we care about to prevent re-renders on other orders' updates
   const activeOrder = useActiveOrdersStore((state) => {
@@ -1299,8 +1300,9 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
       return;
     }
 
-    // 🛡️ DUPLICATE PREVENTION: Ensure table is still occupied/sent
-    if (!tableData || tableData.status === "EMPTY" || tableData.status === 0) {
+    // 🛡️ DUPLICATE PREVENTION: Only block if cart has no active items and table is empty
+    const activeCartItems = cart.filter((i: any) => i.status !== "VOIDED" && i.StatusCode !== 0 && i.statusCode !== 0);
+    if (!activeCartItems.length && (!tableData || tableData.status === "EMPTY" || tableData.status === 0 || tableData.status === "0")) {
       showToast({
         type: "error",
         message: "Checkout Blocked",
@@ -2397,6 +2399,31 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
                         color="#fff"
                       />
                       <Text style={styles.btnText}>Proceed to Pay</Text>
+                    </TouchableOpacity>
+                  );
+                }
+
+                if (cart.length > 0) {
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.proceedBtn,
+                        { flex: 1, backgroundColor: "#10B981" },
+                      ]}
+                      onPress={() => {
+                        if (enableCheckoutFlow !== false) {
+                          router.push("/summary");
+                        } else {
+                          router.push("/payment");
+                        }
+                      }}
+                    >
+                      <Ionicons
+                        name="card-outline"
+                        size={iconSize}
+                        color="#fff"
+                      />
+                      <Text style={styles.btnText}>Process to Pay</Text>
                     </TouchableOpacity>
                   );
                 }

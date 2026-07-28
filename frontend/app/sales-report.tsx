@@ -1041,9 +1041,10 @@ export default function SalesReport() {
         row.isSplit = false;
         row.splitNo = "";
       } else {
-        if (row.BillNo && row.BillNo.includes('-S')) {
+        const splitMatch = row.BillNo && row.BillNo.match(/-S(\d+)$/i);
+        if (splitMatch) {
           row.isSplit = true;
-          row.splitNo = 'S' + row.BillNo.split('-S').pop();
+          row.splitNo = 'S' + splitMatch[1];
         } else {
           row.isSplit = false;
           row.splitNo = "";

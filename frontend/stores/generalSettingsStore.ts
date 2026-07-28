@@ -18,6 +18,7 @@ export interface GeneralSettings {
   showLoyalty: boolean;
   showRewardPoints: boolean;
   showPromoCode: boolean;
+  enableOnlinePayment: boolean;
 }
 
 interface GeneralSettingsState {
@@ -45,6 +46,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
         showLoyalty: true,
         showRewardPoints: true,
         showPromoCode: true,
+        enableOnlinePayment: true,
       },
       loading: false,
 
@@ -72,6 +74,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
                 showLoyalty: data.ShowLoyalty !== undefined ? Boolean(data.ShowLoyalty) : true,
                 showRewardPoints: data.ShowRewardPoints !== undefined ? Boolean(data.ShowRewardPoints) : true,
                 showPromoCode: data.ShowPromoCode !== undefined ? Boolean(data.ShowPromoCode) : true,
+                enableOnlinePayment: data.EnableOnlinePayment !== undefined ? Boolean(data.EnableOnlinePayment) : true,
               },
             }));
           }
@@ -115,6 +118,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
             showLoyalty: updatedSettings.showLoyalty,
             showRewardPoints: updatedSettings.showRewardPoints,
             showPromoCode: updatedSettings.showPromoCode,
+            enableOnlinePayment: updatedSettings.enableOnlinePayment,
           };
 
           const res = await fetch(`${API_URL}/api/settings/update`, {

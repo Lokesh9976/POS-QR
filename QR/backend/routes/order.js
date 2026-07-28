@@ -1452,6 +1452,12 @@ router.post("/complete-online-payment", async (req, res) => {
 
     await transaction.begin();
 
+    // ── STEP 0: FETCH ACTIVE BUSINESS START DATE ──────────────────────────────
+    const activeDateRes = await transaction.request().query(`
+      SELECT TOP 1 start_date FROM RestaurantOrderCur WHERE start_date IS NOT NULL ORDER BY CreatedOn DESC
+    `);
+    const activeStartDate = activeDateRes.recordset[0]?.start_date || new Date();
+
     // ── STEP 1: GET OR CREATE ORDER ──────────────────────────────────────────
     let orderHeaderRes = await transaction.request()
       .input("orderNo", sql.NVarChar(50), orderId)
@@ -1644,17 +1650,18 @@ router.post("/complete-online-payment", async (req, res) => {
         .input("mobile", sql.NVarChar(50), header?.MobileNo || null)
         .input("payMode", sql.NVarChar(50), pMethod)
         .input("userId", sql.UniqueIdentifier, DEFAULT_GUID)
+        .input("startDate", sql.DateTime, activeStartDate)
         .query(`
                   INSERT INTO SettlementHeader (
                       SettlementID, LastSettlementDate, BillNo, OrderType, TableNo, Section,
                       BusinessUnitId, SysAmount, ManualAmount, CreatedOn,
                       SubTotal, TotalTax, DiscountAmount, MobileNo, IsCancelled,
-                      CreatedBy
+                      CreatedBy, start_date
                   ) VALUES (
                       @sid, GETDATE(), @oid, 'DINE-IN', @tableNo, @section,
                       @bizId, @sysAmount, @sysAmount, GETDATE(),
                       @subTotal, 0, 0, @mobile, 0,
-                      @userId
+                      @userId, @startDate
                   )
               `);
       console.log(`✅ [PAYMENT] SettlementHeader inserted: ${settlementId}`);
@@ -1678,13 +1685,14 @@ router.post("/complete-online-payment", async (req, res) => {
         .input("catId", sql.UniqueIdentifier, item.CategoryId || null)
         .input("catName", sql.NVarChar(255), item.CategoryName || "")
         .input("groupName", sql.NVarChar(255), item.DishGroupName || "")
+        .input("startDate", sql.DateTime, activeStartDate)
         .query(`
                     INSERT INTO SettlementItemDetail (
                         SettlementID, DishId, DishName, Qty, Price, Status, OrderDateTime,
-                        CategoryId, CategoryName, SubCategoryName
+                        CategoryId, CategoryName, SubCategoryName, start_date
                     ) VALUES (
                         @sid, @dishId, @dishName, @qty, @price, 'NORMAL', GETDATE(),
-                        @catId, @catName, @groupName
+                        @catId, @catName, @groupName, @startDate
                     )
                 `);
     }
@@ -1706,9 +1714,10 @@ router.post("/complete-online-payment", async (req, res) => {
         .input("paymode", sql.Int, paymodePosition)
         .input("amount", sql.Decimal(18, 2), amount)
         .input("userId", sql.UniqueIdentifier, DEFAULT_GUID)
+        .input("startDate", sql.DateTime, activeStartDate)
         .query(`
                   UPDATE PaymentDetailCur
-                  SET PaymentCollectedOn = GETDATE(), Paymode = @paymode, Amount = @amount, ModifiedBy = @userId, ModifiedOn = GETDATE()
+                  SET PaymentCollectedOn = GETDATE(), Paymode = @paymode, Amount = @amount, ModifiedBy = @userId, ModifiedOn = GETDATE(), start_date = @startDate
                   WHERE OrderId = @orderId
               `);
       console.log(`✅ [PAYMENT] PaymentDetailCur updated`);
@@ -1721,33 +1730,61 @@ router.post("/complete-online-payment", async (req, res) => {
         .input("amount", sql.Decimal(18, 2), amount)
         .input("bizId", sql.UniqueIdentifier, businessUnitId)
         .input("userId", sql.UniqueIdentifier, DEFAULT_GUID)
+        .input("startDate", sql.DateTime, activeStartDate)
         .query(`
                   INSERT INTO PaymentDetailCur (
                       PaymentId, RestaurantBillId, OrderId, BilledFor, 
                       PaymentCollectedOn, PaymentType, Paymode, Amount,
-                      BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn
+                      BusinessUnitId, CreatedBy, CreatedOn, ModifiedBy, ModifiedOn, start_date
                   ) VALUES (
                       @paymentId, @restaurantBillId, @orderId, 1,
                       GETDATE(), 1, @paymode, @amount,
-                      @bizId, @userId, GETDATE(), @userId, GETDATE()
+                      @bizId, @userId, GETDATE(), @userId, GETDATE(), @startDate
                   ) 
               `);
       console.log(`✅ [PAYMENT] PaymentDetailCur inserted`);
     }
 
-    // ── STEP 7: UPDATE TABLEC MASTER ─────────────────────────────────────────
+    // ── STEP 6.5: UPSERT SETTLEMENT TOTAL SALES ────────────────────────────
+    const existingSts = await transaction.request()
+      .input("sid", sql.UniqueIdentifier, settlementId)
+      .query("SELECT SettlementID FROM SettlementTotalSales WHERE SettlementID = @sid");
+
+    if (existingSts.recordset.length > 0) {
+      await transaction.request()
+        .input("sid", sql.UniqueIdentifier, settlementId)
+        .input("amount", sql.Money, amount)
+        .input("paymode", sql.NVarChar(50), pMethod)
+        .query(`
+          UPDATE SettlementTotalSales 
+          SET PayMode = @paymode, SysAmount = @amount, ManualAmount = @amount
+          WHERE SettlementID = @sid
+        `);
+    } else {
+      await transaction.request()
+        .input("sid", sql.UniqueIdentifier, settlementId)
+        .input("amount", sql.Money, amount)
+        .input("paymode", sql.NVarChar(50), pMethod)
+        .query(`
+          INSERT INTO SettlementTotalSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff, ReceiptCount)
+          VALUES (@sid, @paymode, @amount, @amount, 0, 1)
+        `);
+    }
+    console.log(`✅ [PAYMENT] SettlementTotalSales inserted/updated`);
+
+    // ── STEP 7: UPDATE TABLE MASTER (VACANT / CLOSED) ───────────────────────
     if (cleanTableId) {
       await transaction.request()
         .input("tid", sql.UniqueIdentifier, cleanTableId)
         .query(`
                     UPDATE TableMaster
                     SET PAYMENT_STATUS = 1,
-                        Status = 2,
+                        Status = 0,
                         entry_status = 'q',
                         ModifiedOn = GETDATE()
                     WHERE TableId = @tid
                 `);
-      console.log(`✅ [PAYMENT] TableMaster updated`);
+      console.log(`✅ [PAYMENT] TableMaster updated (Status=0 Vacant)`);
     }
 
     // ── STEP 8: ARCHIVE ORDER ────────────────────────────────────────────────
@@ -1819,6 +1856,10 @@ router.post("/complete-online-payment", async (req, res) => {
     }
 
     if (req.io) {
+      if (cleanTableId) {
+        req.io.emit("order_closed", { tableId: cleanTableId, orderId: orderId });
+        req.io.emit("table_status_updated", { tableId: cleanTableId, status: 0 });
+      }
       req.io.emit("qr-print-request", {
         orderId: orderId,
         source: "QR",
