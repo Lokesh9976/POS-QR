@@ -585,7 +585,8 @@ export default function CustomerOrderStatusScreen() {
 
   useEffect(() => {
     if (orderContext?.tableId) {
-      fetchCartFromDB(orderContext.tableId);
+      // 🚀 FORCE FETCH: Bypasses Latency Shield since we navigate here immediately after placing an order
+      fetchCartFromDB(orderContext.tableId, true);
     }
   }, []);
 
@@ -608,12 +609,45 @@ export default function CustomerOrderStatusScreen() {
       }
     };
 
+    const handleCartUpdated = (data: { tableId: string; source?: string }) => {
+      const cleanTarget = String(data.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
+      const cleanCurrent = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+      if (cleanTarget === cleanCurrent) {
+        // If another device placed the order, clear any local NEW items and fetch
+        if (data.source === "order_sent") {
+          const ctxId = useCartStore.getState().currentContextId;
+          if (ctxId) {
+            useCartStore.setState((state) => {
+              const existing = state.carts[ctxId] || [];
+              const clearedCart = existing.filter((item: any) => item.status && item.status !== "NEW");
+              const newQtyMap: Record<string, number> = {};
+              clearedCart.forEach((item: any) => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
+              return {
+                carts: { ...state.carts, [ctxId]: clearedCart },
+                cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+                lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
+              };
+            });
+          }
+          if (orderContext.tableId) {
+            fetchCartFromDB(orderContext.tableId, true);
+          }
+        } else {
+          if (orderContext.tableId) {
+            fetchCartFromDB(orderContext.tableId);
+          }
+        }
+      }
+    };
+
     socket.on("order_closed", handleOrderClosed);
     socket.on("table_status_updated", handleTableStatus);
+    socket.on("cart_updated", handleCartUpdated);
 
     return () => {
       socket.off("order_closed", handleOrderClosed);
       socket.off("table_status_updated", handleTableStatus);
+      socket.off("cart_updated", handleCartUpdated);
     };
   }, [orderContext]);
 
@@ -1402,153 +1436,176 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.02,
-    shadowRadius: 8,
-    elevation: 2,
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.04,
+    shadowRadius: 20,
+    elevation: 3,
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 28,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
   },
   statusLabel: {
-    fontSize: 12,
-    color: "#64748B",
+    fontSize: 11,
+    color: "#94A3B8",
+    fontWeight: "700",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 1.5,
   },
   statusValue: {
-    fontSize: 22,
-    fontWeight: "bold",
+    fontSize: 24,
+    fontWeight: "800",
     color: "#0F172A",
-    marginVertical: 8,
+    marginVertical: 10,
+    letterSpacing: -0.5,
   },
   timeline: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 16,
-    width: "80%",
+    marginTop: 20,
+    width: "88%",
     justifyContent: "space-between",
   },
   timelineStep: {
     alignItems: "center",
+    zIndex: 2,
   },
   stepDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: "#E2E8F0",
+    borderWidth: 3,
+    borderColor: "#FFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   stepText: {
-    fontSize: 11,
+    fontSize: 12,
     color: "#475569",
-    marginTop: 6,
-    fontWeight: "500",
+    marginTop: 8,
+    fontWeight: "600",
   },
   timelineLine: {
     flex: 1,
-    height: 2,
-    backgroundColor: "#E2E8F0",
-    marginHorizontal: 4,
-    marginTop: -16,
+    height: 3,
+    backgroundColor: "#F1F5F9",
+    marginHorizontal: -4,
+    marginTop: -22,
+    zIndex: 1,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
+    fontSize: 17,
+    fontWeight: "800",
     color: "#0F172A",
-    marginBottom: 12,
+    marginBottom: 16,
+    letterSpacing: -0.3,
   },
   requestsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginBottom: 24,
+    marginBottom: 28,
   },
   requestBtn: {
-    width: "31%",
+    width: "48%",
     backgroundColor: "#fff",
-    borderWidth: 1.5,
-    borderColor: "#F1F5F9",
-    borderRadius: 16,
-    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 20,
+    paddingVertical: 18,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    marginBottom: 12,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.02,
-    shadowRadius: 4,
-    elevation: 1,
+    shadowRadius: 6,
+    elevation: 2,
   },
   requestBtnText: {
-    fontSize: 12,
-    color: "#334155",
-    fontWeight: "500",
-    marginTop: 6,
+    fontSize: 13,
+    color: "#1E293B",
+    fontWeight: "600",
+    marginTop: 8,
     textAlign: "center",
   },
   emptyContainer: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 32,
+    borderRadius: 20,
+    padding: 40,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
   },
   emptyText: {
-    color: "#64748B",
+    color: "#94A3B8",
+    fontWeight: "500",
   },
   itemRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.01,
-    shadowRadius: 4,
-    elevation: 1,
+    padding: 20,
+    borderRadius: 20,
+    marginBottom: 12,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.02,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#F1F5F9",
   },
   itemName: {
-    fontSize: 15,
-    fontWeight: "600",
+    fontSize: 16,
+    fontWeight: "700",
     color: "#0F172A",
+    letterSpacing: -0.2,
   },
   itemQty: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#64748B",
-    marginTop: 4,
+    marginTop: 6,
+    fontWeight: "500",
   },
   statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
   statusBadgeText: {
-    fontSize: 12,
-    fontWeight: "bold",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
   },
   addDishButton: {
     backgroundColor: Theme.primary,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    padding: 16,
-    borderRadius: 16,
-    marginTop: 20,
-    marginBottom: 40,
+    padding: 18,
+    borderRadius: 20,
+    marginTop: 24,
+    marginBottom: 48,
     shadowColor: Theme.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 15,
+    elevation: 5,
   },
   addDishButtonText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "800",
   },
   settledContainer: {
     flex: 1,
