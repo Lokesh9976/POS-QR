@@ -1,7 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const { authenticateToken } = require("../middleware/auth");
-router.use(authenticateToken);
+router.use((req, res, next) => {
+  // Allow customer public QR calls (GET status, customer orders, dish progress) to bypass POS staff auth
+  const isCustomerEndpoint = req.path.startsWith("/status/") || req.path.startsWith("/customer/");
+  if (isCustomerEndpoint && req.method === "GET") {
+    return next();
+  }
+  return authenticateToken(req, res, next);
+});
 const sql = require("mssql");
 const { poolPromise } = require("../config/db");
 
@@ -870,34 +877,75 @@ router.delete("/customer/:phone", async (req, res) => {
 router.get("/customer/:phone/orders", async (req, res) => {
   try {
     const { phone } = req.params;
-    if (!phone || phone.trim() === "") {
-      return res.status(400).json({ error: "Phone number is required" });
-    }
+    const { tableNo } = req.query;
     const pool = await poolPromise;
-    const phoneValue = phone.trim();
     
+    const phoneValue = (phone && phone !== "guest" && phone !== "undefined") ? phone.trim() : "";
+    const cleanDigits = phoneValue.replace(/\D/g, "");
+    const last8Digits = cleanDigits.length >= 8 ? cleanDigits.slice(-8) : cleanDigits;
+    const tableVal = (tableNo || "").toString().trim();
+
+    if (!phoneValue && !tableVal) {
+      return res.json([]);
+    }
+
     const query = `
-      SELECT 
-        sh.SettlementID,
-        sh.BillNo,
-        sh.CreatedOn AS OrderDateTime,
-        sh.SysAmount AS TotalAmount,
-        sh.IsCancelled,
-        (
-          SELECT TOP 1 UPPER(LTRIM(RTRIM(sts.PayMode)))
-          FROM SettlementTotalSales sts
-          WHERE sts.SettlementID = sh.SettlementID
-        ) AS PayMode
-      FROM SettlementHeader sh
-      WHERE sh.MobileNo = @Phone OR REPLACE(sh.MobileNo, ' ', '') = REPLACE(@Phone, ' ', '')
-      ORDER BY sh.CreatedOn DESC
+      SELECT DISTINCT
+        SettlementID,
+        BillNo,
+        OrderDateTime,
+        TotalAmount,
+        IsCancelled,
+        PayMode
+      FROM (
+        -- 1. Settled Orders (Cash, Card, PayNow closed at POS)
+        SELECT 
+          sh.SettlementID,
+          sh.BillNo,
+          ISNULL(sh.LastSettlementDate, sh.CreatedOn) AS OrderDateTime,
+          sh.SysAmount AS TotalAmount,
+          sh.IsCancelled,
+          ISNULL(
+            (
+              SELECT TOP 1 UPPER(LTRIM(RTRIM(sts.PayMode)))
+              FROM SettlementTotalSales sts
+              WHERE sts.SettlementID = sh.SettlementID
+            ), 'CASH'
+          ) AS PayMode
+        FROM SettlementHeader sh
+        WHERE (@Last8 <> '' AND (sh.MobileNo LIKE '%' + @Last8 + '%' OR REPLACE(REPLACE(sh.MobileNo, ' ', ''), '+', '') LIKE '%' + @Last8 + '%'))
+           OR (@Phone <> '' AND sh.MobileNo = @Phone)
+           OR (@TableNo <> '' AND RTRIM(LTRIM(sh.TableNo)) = @TableNo AND sh.CreatedOn >= DATEADD(hour, -24, GETDATE()))
+
+        UNION ALL
+
+        -- 2. Open / Current Session QR Orders (Only if NOT already settled)
+        SELECT 
+          CAST(ro.OrderId AS NVARCHAR(100)) AS SettlementID,
+          ro.OrderNumber AS BillNo,
+          ro.CreatedOn AS OrderDateTime,
+          ISNULL(ro.TotalAmount, 0) AS TotalAmount,
+          CASE WHEN ro.StatusCode = 4 THEN 1 ELSE 0 END AS IsCancelled,
+          'QR Order' AS PayMode
+        FROM RestaurantOrderCur ro
+        WHERE ((@Last8 <> '' AND (ro.MobileNo LIKE '%' + @Last8 + '%' OR REPLACE(REPLACE(ro.MobileNo, ' ', ''), '+', '') LIKE '%' + @Last8 + '%'))
+           OR (@Phone <> '' AND ro.MobileNo = @Phone)
+           OR (@TableNo <> '' AND RTRIM(LTRIM(ro.Tableno)) = @TableNo AND ro.CreatedOn >= DATEADD(hour, -24, GETDATE())))
+          AND NOT EXISTS (
+            SELECT 1 FROM SettlementHeader sh_check 
+            WHERE sh_check.BillNo = ro.OrderNumber OR CAST(sh_check.OrderId AS NVARCHAR(100)) = CAST(ro.OrderId AS NVARCHAR(100))
+          )
+      ) combined
+      ORDER BY OrderDateTime DESC
     `;
-    
+
     const result = await pool.request()
       .input("Phone", sql.NVarChar(50), phoneValue)
+      .input("Last8", sql.NVarChar(50), last8Digits)
+      .input("TableNo", sql.NVarChar(50), tableVal)
       .query(query);
-       
-    res.json(result.recordset);
+
+    res.json(result.recordset || []);
   } catch (err) {
     console.error("[LOYALTY CUSTOMER ORDERS ERROR]", err);
     res.status(500).json({ error: err.message });

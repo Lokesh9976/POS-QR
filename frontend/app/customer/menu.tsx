@@ -13,6 +13,7 @@ import {
   Alert,
   Platform,
   Modal,
+  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Theme } from "../../constants/theme";
@@ -21,6 +22,8 @@ import { useCartStore } from "../../stores/cartStore";
 import { useOrderContextStore } from "../../stores/orderContextStore";
 import { API_URL } from "../../constants/Config";
 import { Ionicons } from "@expo/vector-icons";
+import { formatToSingaporeDate, formatToSingaporeTime } from "../../utils/timezoneHelper";
+import { useGeneralSettingsStore } from "../../stores/generalSettingsStore";
 
 const { width } = Dimensions.get("window");
 
@@ -398,6 +401,23 @@ export default function CustomerMenuScreen() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [userInfo, setUserInfo] = useState<{ UserName: string; FullName: string; Phone: string; Email?: string; PromoCode?: string; PromoAmount?: number } | null>(null);
 
+  const [profileTab, setProfileTab] = useState<"details" | "history" | "loyalty">("details");
+  const [customerOrders, setCustomerOrders] = useState<any[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [loyaltyStatus, setLoyaltyStatus] = useState<any>(null);
+  const [dishProgress, setDishProgress] = useState<any[]>([]);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const [promoInput, setPromoInput] = useState("");
+  const [promoApplying, setPromoApplying] = useState(false);
+  const [promoMsg, setPromoMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [showOrderHistorySection, setShowOrderHistorySection] = useState(false);
+  const [showLoyaltySection, setShowLoyaltySection] = useState(false);
+  const { settings: generalSettings, fetchSettings: fetchGeneralSettings } = useGeneralSettingsStore();
+
+  useEffect(() => {
+    fetchGeneralSettings();
+  }, []);
+
   useEffect(() => {
     if (typeof localStorage !== "undefined") {
       const stored = localStorage.getItem("qr_pos_user");
@@ -405,7 +425,90 @@ export default function CustomerMenuScreen() {
         try { setUserInfo(JSON.parse(stored)); } catch (e) {}
       }
     }
+    if (showProfileModal) {
+      fetchCustomerHistoryAndLoyalty();
+    }
   }, [showProfileModal]);
+
+  const fetchCustomerHistoryAndLoyalty = async () => {
+    const phone = userInfo?.Phone || (typeof localStorage !== "undefined" ? JSON.parse(localStorage.getItem("qr_pos_user") || "{}").Phone : "") || "guest";
+    const currentTable = orderContext?.tableNo || "";
+
+    setOrdersLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/loyalty/customer/${encodeURIComponent(phone)}/orders?tableNo=${encodeURIComponent(currentTable)}`);
+      const data = await res.json();
+      if (res.ok && Array.isArray(data)) {
+        const seenBills = new Set<string>();
+        const uniqueOrders = data.filter((ord: any) => {
+          const bNo = ord.BillNo || ord.billNo || ord.SettlementID || ord.SettlementId;
+          if (!bNo || seenBills.has(bNo)) return false;
+          seenBills.add(bNo);
+          return true;
+        });
+        setCustomerOrders(uniqueOrders);
+      }
+    } catch (e) {
+      console.log("Error fetching customer orders:", e);
+    } finally {
+      setOrdersLoading(false);
+    }
+
+    if (!phone || phone === "guest") return;
+
+    setLoyaltyLoading(true);
+    try {
+      const [statusRes, progressRes] = await Promise.all([
+        fetch(`${API_URL}/api/loyalty/status/${encodeURIComponent(phone)}`),
+        fetch(`${API_URL}/api/loyalty/customer/${encodeURIComponent(phone)}/dish-progress`),
+      ]);
+      const statusData = await statusRes.json();
+      const progressData = await progressRes.json();
+
+      if (statusRes.ok && statusData.customer) {
+        setLoyaltyStatus(statusData.customer);
+      }
+      if (progressRes.ok && Array.isArray(progressData)) {
+        setDishProgress(progressData);
+      }
+    } catch (e) {
+      console.log("Error fetching loyalty status:", e);
+    } finally {
+      setLoyaltyLoading(false);
+    }
+  };
+
+  const handleApplyPromoInProfile = async () => {
+    if (!promoInput.trim()) return;
+    setPromoApplying(true);
+    setPromoMsg(null);
+    try {
+      const codeToVerify = promoInput.trim();
+      const res = await fetch(`${API_URL}/api/members/promocode/${encodeURIComponent(codeToVerify)}`);
+      const data = await res.json();
+      if (data.success && data.promoCode) {
+        const amount = Number(data.promoCode.amount || 0);
+        const updatedUser = {
+          ...userInfo,
+          PromoCode: data.promoCode.code,
+          PromoAmount: amount,
+        };
+        setUserInfo(updatedUser as any);
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem("qr_pos_user", JSON.stringify(updatedUser));
+          localStorage.setItem("promoCode", data.promoCode.code);
+        }
+        setPromoMsg({ text: `Promo '${data.promoCode.code}' Linked! Balance: $${amount.toFixed(2)}`, type: "success" });
+        setPromoInput("");
+      } else {
+        setPromoMsg({ text: data.message || "Invalid or expired promo code.", type: "error" });
+      }
+    } catch {
+      setPromoMsg({ text: "Error connecting to server.", type: "error" });
+    } finally {
+      setPromoApplying(false);
+    }
+  };
 
   const confirmLogout = () => {
     if (orderContext?.tableId) {
@@ -728,7 +831,7 @@ export default function CustomerMenuScreen() {
         </View>
       </Modal>
 
-      {/* Profile Details Modal */}
+      {/* Profile Details, History & Loyalty Modal */}
       <Modal
         visible={showProfileModal}
         transparent
@@ -740,85 +843,279 @@ export default function CustomerMenuScreen() {
           activeOpacity={1}
           onPress={() => setShowProfileModal(false)}
         >
-          <View style={{ backgroundColor: "#fff", borderRadius: 24, padding: 24, width: "100%", maxWidth: 360, shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 8 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <Text style={{ fontSize: 18, fontWeight: "bold", color: "#0F172A" }}>My Profile</Text>
+          <TouchableOpacity 
+            activeOpacity={1}
+            style={{ backgroundColor: "#fff", borderRadius: 24, padding: 22, width: "92%", maxWidth: 420, maxHeight: "88%", shadowColor: "#000", shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.18, shadowRadius: 24, elevation: 10 }}
+          >
+            {/* Header */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <Text style={{ fontSize: 20, fontWeight: "800", color: "#0F172A" }}>My Profile</Text>
               <TouchableOpacity onPress={() => setShowProfileModal(false)} style={{ padding: 4 }}>
                 <Ionicons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            <View style={{ alignItems: "center", marginBottom: 24 }}>
-              <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: "#FFF2EC", justifyContent: "center", alignItems: "center", marginBottom: 12 }}>
-                <Ionicons name="person" size={32} color="#FF5E1A" />
+            <ScrollView showsVerticalScrollIndicator={false} style={{ flexGrow: 0 }}>
+              {/* Profile Avatar Header */}
+              <View style={{ alignItems: "center", marginBottom: 20 }}>
+                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: "#FFF2EC", justifyContent: "center", alignItems: "center", marginBottom: 10 }}>
+                  <Ionicons name="person" size={30} color="#FF5E1A" />
+                </View>
+                <Text style={{ fontSize: 18, fontWeight: "800", color: "#0F172A" }}>
+                  {userInfo?.FullName || userInfo?.UserName || "Guest Customer"}
+                </Text>
+                <Text style={{ fontSize: 13, color: "#64748B", fontWeight: "600", marginTop: 2 }}>
+                  {userInfo?.Phone ? "Registered Customer" : "Guest Diner"}
+                </Text>
               </View>
-              <Text style={{ fontSize: 18, fontWeight: "700", color: "#0F172A" }}>
-                {userInfo?.FullName || userInfo?.UserName || "Guest"}
-              </Text>
-              <Text style={{ fontSize: 13, color: "#64748B", marginTop: 4 }}>
-                {userInfo?.Phone ? "Registered Customer" : "Guest Diner"}
-              </Text>
-            </View>
 
-            <View style={{ gap: 14, marginBottom: 24 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <Ionicons name="call" size={18} color="#FF5E1A" style={{ width: 20 }} />
-                <View>
-                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Phone Number</Text>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
-                    {userInfo?.Phone || "Not provided"}
-                  </Text>
+              {/* Account Details List */}
+              <View style={{ gap: 14, marginBottom: 20, backgroundColor: "#F8FAFC", padding: 14, borderRadius: 18, borderWidth: 1, borderColor: "#E2E8F0" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Ionicons name="call" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                  <View>
+                    <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "700", textTransform: "uppercase" }}>Phone Number</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#334155" }}>
+                      {userInfo?.Phone || "Not provided"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Ionicons name="mail" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                  <View>
+                    <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "700", textTransform: "uppercase" }}>Email Address</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#334155" }}>
+                      {userInfo?.Email || "Not provided"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Ionicons name="gift" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                  <View>
+                    <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "700", textTransform: "uppercase" }}>Promo Balance</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#10B981" }}>
+                      {userInfo?.PromoCode ? `${userInfo.PromoCode} ($${Number(userInfo.PromoAmount).toFixed(2)})` : "No promo active"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Ionicons name="time" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                  <View>
+                    <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "700", textTransform: "uppercase" }}>Session Started</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#334155" }}>
+                      Today, {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <Ionicons name="location" size={18} color="#FF5E1A" style={{ width: 20 }} />
+                  <View>
+                    <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "700", textTransform: "uppercase" }}>Dining Location</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: "#334155" }}>
+                      Table {orderContext?.tableNo || "Default Table"} ({orderContext?.section || "SECTION_1"})
+                    </Text>
+                  </View>
                 </View>
               </View>
 
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <Ionicons name="mail" size={18} color="#FF5E1A" style={{ width: 20 }} />
-                <View>
-                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Email Address</Text>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
-                    {userInfo?.Email || "Not provided"}
-                  </Text>
-                </View>
+              {/* Order History Accordion Button */}
+              <View style={{ marginBottom: 12 }}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setShowOrderHistorySection(!showOrderHistorySection)}
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    backgroundColor: showOrderHistorySection ? "#FFF5ED" : "#F8FAFC",
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    borderRadius: 14,
+                    borderWidth: 1.5,
+                    borderColor: showOrderHistorySection ? "#FF5E1A" : "#E2E8F0",
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Ionicons name="receipt" size={18} color="#FF5E1A" />
+                    <Text style={{ fontSize: 13, fontWeight: "800", color: "#0F172A", textTransform: "uppercase" }}>
+                      Order History
+                    </Text>
+                  </View>
+                  <Ionicons name={showOrderHistorySection ? "chevron-up" : "chevron-down"} size={20} color="#FF5E1A" />
+                </TouchableOpacity>
+
+                {showOrderHistorySection && (
+                  <View style={{ marginTop: 10 }}>
+                    {ordersLoading ? (
+                      <ActivityIndicator color="#FF5E1A" style={{ marginVertical: 12 }} />
+                    ) : customerOrders.length === 0 ? (
+                      <View style={{ backgroundColor: "#F8FAFC", borderRadius: 14, padding: 14, alignItems: "center", borderWidth: 1, borderColor: "#E2E8F0" }}>
+                        <Ionicons name="receipt-outline" size={32} color="#CBD5E1" />
+                        <Text style={{ fontSize: 13, fontWeight: "700", color: "#64748B", marginTop: 4 }}>No Past Orders Found</Text>
+                      </View>
+                    ) : (
+                      <View style={{ gap: 10 }}>
+                        {customerOrders.map((order, idx) => {
+                          const billNo = order.BillNo || order.billNo || order.SettlementID || order.SettlementId || (idx + 1);
+                          const isCancelled = order.IsCancelled === 1 || order.IsCancelled === true || order.isCancelled === true;
+                          const rawDate = order.OrderDateTime || order.date || order.CreatedOn;
+                          const displayDate = rawDate ? `${formatToSingaporeDate(rawDate)} ${formatToSingaporeTime(rawDate)}` : "Recent Order";
+                          const amount = Number(order.TotalAmount || order.totalAmount || order.grandTotal || 0).toFixed(2);
+                          const payMode = order.PayMode || "QR Order";
+
+                          return (
+                            <View key={order.SettlementID || order.SettlementId || billNo || idx} style={{ backgroundColor: "#F8FAFC", borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "#E2E8F0" }}>
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <Text style={{ fontSize: 14, fontWeight: "800", color: "#0F172A" }}>
+                                  Order #{billNo}
+                                </Text>
+                                <View style={{ backgroundColor: isCancelled ? "#FEF2F2" : "#ECFDF5", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
+                                  <Text style={{ fontSize: 11, fontWeight: "800", color: isCancelled ? "#EF4444" : "#10B981" }}>
+                                    {isCancelled ? "CANCELLED" : "COMPLETED"}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                <Text style={{ fontSize: 12, color: "#64748B", fontWeight: "600" }}>
+                                  {displayDate} • {payMode}
+                                </Text>
+                                <Text style={{ fontSize: 14, fontWeight: "800", color: "#FF5E1A" }}>
+                                  ${amount}
+                                </Text>
+                              </View>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                )}
               </View>
 
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <Ionicons name="gift" size={18} color="#FF5E1A" style={{ width: 20 }} />
-                <View>
-                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Promo Balance</Text>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
-                    {userInfo?.PromoCode ? `${userInfo.PromoCode} ($${Number(userInfo.PromoAmount).toFixed(2)})` : "No promo active"}
-                  </Text>
-                </View>
-              </View>
+              {/* Loyalty & Rewards Accordion Button (Hidden if ShowLoyalty setting is OFF) */}
+              {generalSettings?.showLoyalty !== false && (
+                <View style={{ marginBottom: 12 }}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => setShowLoyaltySection(!showLoyaltySection)}
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      backgroundColor: showLoyaltySection ? "#FFF5ED" : "#F8FAFC",
+                      paddingHorizontal: 14,
+                      paddingVertical: 12,
+                      borderRadius: 14,
+                      borderWidth: 1.5,
+                      borderColor: showLoyaltySection ? "#FF5E1A" : "#E2E8F0",
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      <Ionicons name="ribbon" size={18} color="#FF5E1A" />
+                      <Text style={{ fontSize: 13, fontWeight: "800", color: "#0F172A", textTransform: "uppercase" }}>
+                        Loyalty & Rewards
+                      </Text>
+                    </View>
+                    <Ionicons name={showLoyaltySection ? "chevron-up" : "chevron-down"} size={20} color="#FF5E1A" />
+                  </TouchableOpacity>
 
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <Ionicons name="time" size={18} color="#FF5E1A" style={{ width: 20 }} />
-                <View>
-                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Session Started</Text>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
-                    Today, {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </Text>
-                </View>
-              </View>
+                  {showLoyaltySection && (
+                    <View style={{ marginTop: 10, gap: 12 }}>
+                      {/* Loyalty Visit Stats Card */}
+                      <View style={{ backgroundColor: "#FF5E1A", borderRadius: 16, padding: 14, shadowColor: "#FF5E1A", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 6 }}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                            <Ionicons name="sparkles" size={18} color="#FFFFFF" />
+                            <Text style={{ fontSize: 15, fontWeight: "800", color: "#FFFFFF" }}>Loyalty Visits</Text>
+                          </View>
+                          <View style={{ backgroundColor: "rgba(255,255,255,0.25)", paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 }}>
+                            <Text style={{ fontSize: 12, fontWeight: "800", color: "#FFFFFF" }}>
+                              {loyaltyStatus?.TotalVisits || loyaltyStatus?.VisitCount || 0} Total Visits
+                            </Text>
+                          </View>
+                        </View>
 
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <Ionicons name="location" size={18} color="#FF5E1A" style={{ width: 20 }} />
-                <View>
-                  <Text style={{ fontSize: 11, color: "#94A3B8", fontWeight: "600", textTransform: "uppercase" }}>Dining Location</Text>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#334155" }}>
-                    Table {orderContext?.tableNo || "Default Table"} ({orderContext?.section || "SECTION_1"})
-                  </Text>
-                </View>
-              </View>
-            </View>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text style={{ fontSize: 12, color: "rgba(255,255,255,0.9)", fontWeight: "600" }}>
+                            Current Cycle: {loyaltyStatus?.VisitCount || 0} visits
+                          </Text>
+                          {(loyaltyStatus?.RewardPending === 1 || loyaltyStatus?.RewardPending === true) && (
+                            <View style={{ backgroundColor: "#10B981", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                              <Text style={{ fontSize: 11, fontWeight: "800", color: "#FFFFFF" }}>🎁 Reward Unlocked</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
 
+                      {/* Active Dish Loyalty Campaigns */}
+                      {dishProgress.length > 0 && (
+                        <View style={{ gap: 10 }}>
+                          <Text style={{ fontSize: 12, fontWeight: "800", color: "#0F172A", textTransform: "uppercase" }}>
+                            🍽️ Active Loyalty Campaigns
+                          </Text>
+                          {dishProgress.map((prog) => {
+                            const progressPercent = Math.min(
+                              100,
+                              Math.round(((prog.CurrentCount || 0) / (prog.RequiredBills || 1)) * 100)
+                            );
+                            return (
+                              <View key={prog.RuleId || prog.CampaignName} style={{ backgroundColor: "#F8FAFC", borderRadius: 14, padding: 12, borderWidth: 1, borderColor: "#E2E8F0" }}>
+                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                  <Text style={{ fontSize: 14, fontWeight: "800", color: "#0F172A", flex: 1 }}>
+                                    {prog.CampaignName}
+                                  </Text>
+                                  {prog.RewardsAvailable > 0 && (
+                                    <View style={{ backgroundColor: "#10B981", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
+                                      <Text style={{ fontSize: 11, fontWeight: "800", color: "#FFFFFF" }}>🎁 {prog.RewardsAvailable} Free</Text>
+                                    </View>
+                                  )}
+                                </View>
+
+                                {/* Eligible Dish to Buy */}
+                                <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 8 }}>
+                                  <Ionicons name="cart-outline" size={14} color="#334155" />
+                                  <Text style={{ fontSize: 12, fontWeight: "700", color: "#334155" }}>
+                                    Buy: <Text style={{ color: "#FF5E1A", fontWeight: "800" }}>{prog.PurchaseDishName || "Eligible Dish"}</Text>
+                                  </Text>
+                                </View>
+
+                                {/* Progress bar */}
+                                <View style={{ height: 8, backgroundColor: "#E2E8F0", borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
+                                  <View style={{ height: "100%", backgroundColor: "#FF5E1A", width: `${progressPercent}%`, borderRadius: 4 }} />
+                                </View>
+
+                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#64748B" }}>
+                                    {prog.CurrentCount || 0} / {prog.RequiredBills} purchased
+                                  </Text>
+                                  <Text style={{ fontSize: 11, fontWeight: "800", color: "#10B981" }}>
+                                    Reward: Free {prog.RewardDishName}
+                                  </Text>
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Modal Action Button */}
             <TouchableOpacity 
-              style={{ width: "100%", paddingVertical: 13, backgroundColor: "#FF5E1A", borderRadius: 12, alignItems: "center" }}
+              style={{ width: "100%", paddingVertical: 13, backgroundColor: "#FF5E1A", borderRadius: 14, alignItems: "center", marginTop: 14 }}
               onPress={() => setShowProfileModal(false)}
             >
-              <Text style={{ fontSize: 15, fontWeight: "700", color: "#fff" }}>Close</Text>
+              <Text style={{ fontSize: 15, fontWeight: "800", color: "#fff" }}>Close</Text>
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </View>

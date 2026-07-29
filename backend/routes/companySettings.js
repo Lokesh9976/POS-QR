@@ -9,8 +9,19 @@ const { getCompanySettings, invalidateCache } = require("../utils/settingsCache"
 router.get("/:id", async (req, res) => {
   try {
     const settings = await getCompanySettings();
+    const pool = await poolPromise;
+    const licenseRes = await pool.request().query("SELECT MAX(FromDate) AS FromDate, MAX(ToDate) AS ToDate FROM UserMaster");
+    const license = licenseRes.recordset[0] || { FromDate: null, ToDate: null };
+
     if (settings) {
-      res.json({ success: true, settings });
+      res.json({ 
+        success: true, 
+        settings: { 
+          ...settings, 
+          LicenseFromDate: license.FromDate, 
+          LicenseToDate: license.ToDate 
+        } 
+      });
     } else {
       res.status(404).json({ success: false, message: "Settings not found" });
     }

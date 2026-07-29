@@ -56,6 +56,7 @@ import {
   TableStatusType,
   useTableStatusStore,
 } from "../../stores/tableStatusStore";
+import { useNotificationStore } from "@/stores/notificationStore";
 
 // --- MOBILE SOLID COLORS ---
 const SOLID_LIGHT_GREEN = "#F0FDF4";
@@ -451,6 +452,18 @@ export default function Category() {
     null,
   );
   const [isStartingDay, setIsStartingDay] = useState(false);
+  const [companyInfo, setCompanyInfo] = useState<any>(null);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/company-settings/1`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.success && data.settings) {
+          setCompanyInfo(data.settings);
+        }
+      })
+      .catch((err) => console.log("Error fetching company settings for license:", err));
+  }, []);
 
   // ──── Move Table modal states ────────────────────────────────────────────
   const [isMoveTableVisible, setIsMoveTableVisible] = useState(false);
@@ -593,6 +606,8 @@ export default function Category() {
     }, [width, height, insets]);
 
   const user = useAuthStore((s: any) => s.user);
+  const { notifications, unreadCount, markAllAsRead } = useNotificationStore();
+  const [isNotifModalVisible, setIsNotifModalVisible] = useState(false);
   const logout = useAuthStore((s: any) => s.logout);
   const canAccessSalesReport = useAuthStore((s: any) => s.canAccessSalesReport);
   const canAccessMembers = useAuthStore((s: any) => s.canAccessMembers);
@@ -1182,6 +1197,23 @@ export default function Category() {
 
   const handleTablePress = React.useCallback(
     async (item: TableItem, tableData: any, isCheckoutAction?: boolean) => {
+      // Check if user license is expired
+      const userLicenseToDate = user?.licenseToDate || companyInfo?.LicenseToDate;
+      if (userLicenseToDate) {
+        const today = new Date();
+        const licDate = new Date(userLicenseToDate);
+        today.setHours(0,0,0,0);
+        licDate.setHours(0,0,0,0);
+        if (today > licDate) {
+          showToast({
+            type: "error",
+            message: "License Expired",
+            subtitle: "Your POS license has expired. Please contact administrator.",
+          });
+          return;
+        }
+      }
+
       if (!isDayStarted) {
         showToast({
           type: "warning",
@@ -1304,6 +1336,7 @@ export default function Category() {
       enableGuestDetailsPopup,
       selectedBusinessDate,
       isDayStarted,
+      companyInfo,
     ],
   );
 
@@ -1629,6 +1662,108 @@ export default function Category() {
     );
   }
 
+  const renderLicenseView = (isFloating: boolean) => {
+    if (!companyInfo) return null;
+    return (
+      <View style={isFloating ? {
+        position: "absolute",
+        bottom: Math.max(insets.bottom, 16),
+        left: Math.max(insets.left, 16) + 8,
+        backgroundColor: "transparent",
+        pointerEvents: "none",
+      } : {
+        paddingHorizontal: PADDING,
+        paddingVertical: 16,
+        alignItems: "flex-start",
+        justifyContent: "center",
+        marginTop: 10,
+      }}>
+        <View style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: "#F8FAFC",
+          borderRadius: 12,
+          padding: 12,
+          borderWidth: 1.2,
+          borderColor: "#E2E8F0",
+          maxWidth: 420,
+          width: "100%",
+          gap: 12,
+          shadowColor: "#0F172A",
+          shadowOffset: { width: 0, height: 1 },
+          shadowOpacity: 0.04,
+          shadowRadius: 4,
+          elevation: 1,
+        }}>
+          {companyInfo.CompanyLogoUrl ? (
+            <Image
+              source={{ uri: companyInfo.CompanyLogoUrl }}
+              style={{ width: 56, height: 56, borderRadius: 8 }}
+              contentFit="contain"
+            />
+          ) : (
+            <View style={{
+              width: 56,
+              height: 56,
+              borderRadius: 8,
+              backgroundColor: "#F1F5F9",
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <Ionicons name="storefront-outline" size={24} color="#94A3B8" />
+            </View>
+          )}
+          
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={{
+              fontFamily: Fonts.bold,
+              fontSize: 14,
+              color: "#0F172A",
+            }}>
+              {companyInfo.CompanyName || "Smart POS"}
+            </Text>
+            
+            {companyInfo.Address ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Ionicons name="location-outline" size={11} color="#64748B" />
+                <Text style={{
+                  fontFamily: Fonts.medium,
+                  fontSize: 10,
+                  color: "#64748B",
+                  flex: 1,
+                }} numberOfLines={1}>
+                  {companyInfo.Address}
+                </Text>
+              </View>
+            ) : null}
+
+            {(user?.licenseFromDate || user?.licenseToDate || companyInfo.LicenseFromDate || companyInfo.LicenseToDate) ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 1 }}>
+                <Ionicons name="shield-checkmark-outline" size={11} color="#22C55E" />
+                <Text style={{
+                  fontFamily: Fonts.semiBold,
+                  fontSize: 10,
+                  color: "#334155",
+                }}>
+                  License: <Text style={{ color: "#22C55E", fontFamily: Fonts.bold }}>{(user?.licenseFromDate || companyInfo.LicenseFromDate) ? (user?.licenseFromDate || companyInfo.LicenseFromDate).split("T")[0] : "N/A"}</Text> to <Text style={{ color: "#22C55E", fontFamily: Fonts.bold }}>{(user?.licenseToDate || companyInfo.LicenseToDate) ? (user?.licenseToDate || companyInfo.LicenseToDate).split("T")[0] : "N/A"}</Text>
+                </Text>
+              </View>
+            ) : null}
+            
+            <Text style={{
+              fontFamily: Fonts.medium,
+              fontSize: 9,
+              color: "#94A3B8",
+              marginTop: 2,
+            }}>
+              @ 2026 UNIPRO . All rights reserved.
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor={Theme.bgNav} />
@@ -1897,6 +2032,38 @@ export default function Category() {
                   <Ionicons name="tv-outline" size={18} color={Theme.info} />
                 </TouchableOpacity>
               )}
+
+              <TouchableOpacity
+                style={[
+                  styles.headerActionBtn,
+                  { paddingHorizontal: 10, paddingVertical: 6 },
+                ]}
+                onPress={() => setIsNotifModalVisible(true)}
+                activeOpacity={0.75}
+              >
+                <View style={{ position: "relative" }}>
+                  <Ionicons name="notifications-outline" size={18} color={Theme.primary} />
+                  {unreadCount > 0 && (
+                    <View style={{
+                      position: "absolute",
+                      top: -6,
+                      right: -6,
+                      backgroundColor: Theme.danger || "#ef4444",
+                      borderRadius: 7,
+                      minWidth: 14,
+                      height: 14,
+                      justifyContent: "center",
+                      alignItems: "center",
+                      borderWidth: 1,
+                      borderColor: "#FFF",
+                    }}>
+                      <Text style={{ color: "#fff", fontSize: 8, fontFamily: Fonts.bold }}>
+                        {unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -2079,6 +2246,36 @@ export default function Category() {
                   )}
                 </TouchableOpacity>
               )}
+
+              {/* Alerts/Notifications Button */}
+              <TouchableOpacity
+                style={styles.headerActionBtn}
+                onPress={() => setIsNotifModalVisible(true)}
+                activeOpacity={0.75}
+              >
+                <View style={{ position: "relative" }}>
+                  <Ionicons name="notifications-outline" size={20} color={Theme.primary} />
+                  {unreadCount > 0 && (
+                    <View style={{
+                      position: "absolute",
+                      top: -6,
+                      right: -6,
+                      backgroundColor: Theme.danger || "#ef4444",
+                      borderRadius: 7,
+                      minWidth: 14,
+                      height: 14,
+                      justifyContent: "center",
+                      alignItems: "center",
+                      borderWidth: 1,
+                      borderColor: "#FFF",
+                    }}>
+                      <Text style={{ color: "#fff", fontSize: 8, fontFamily: Fonts.bold }}>
+                        {unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
 
               {/* NEW CONSOLIDATED MENU BUTTON */}
               <TouchableOpacity
@@ -2408,6 +2605,36 @@ export default function Category() {
                 )}
               </TouchableOpacity>
             )}
+
+            {/* Alerts/Notifications Button */}
+            <TouchableOpacity
+              style={styles.headerActionBtn}
+              onPress={() => setIsNotifModalVisible(true)}
+              activeOpacity={0.75}
+            >
+              <View style={{ position: "relative" }}>
+                <Ionicons name="notifications-outline" size={20} color={Theme.primary} />
+                {unreadCount > 0 && (
+                  <View style={{
+                    position: "absolute",
+                    top: -6,
+                    right: -6,
+                    backgroundColor: Theme.danger || "#ef4444",
+                    borderRadius: 7,
+                    minWidth: 14,
+                    height: 14,
+                    justifyContent: "center",
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: "#FFF",
+                  }}>
+                    <Text style={{ color: "#fff", fontSize: 8, fontFamily: Fonts.bold }}>
+                      {unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
 
             {/* NEW CONSOLIDATED MENU BUTTON */}
             <TouchableOpacity
@@ -3422,7 +3649,7 @@ export default function Category() {
         contentContainerStyle={{
           gap: GAP,
           paddingHorizontal: PADDING,
-          paddingBottom: 50,
+          paddingBottom: isTablet ? 160 : 40,
           paddingTop: 8,
         }}
         showsVerticalScrollIndicator={false}
@@ -3440,6 +3667,7 @@ export default function Category() {
             </TouchableOpacity>
           </View>
         }
+        ListFooterComponent={!isTablet ? renderLicenseView(false) : null}
       />
       {/* 〰〰〰〰〰〰〰〰〰〰〰 CUSTOMER GUEST & PAX MODAL 〰〰〰〰〰〰〰〰〰〰〰 */}
       <Modal
@@ -4080,6 +4308,203 @@ export default function Category() {
         onClose={() => setIsSettingsVisible(false)}
       />
 
+      {/* Notifications Modal */}
+      <Modal
+        visible={isNotifModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsNotifModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setIsNotifModalVisible(false)}>
+          <View style={{
+            flex: 1,
+            backgroundColor: "rgba(15, 23, 42, 0.3)",
+            justifyContent: "flex-start",
+            alignItems: isTablet ? "flex-end" : "center",
+            paddingTop: isTablet ? 70 : 100,
+            paddingRight: isTablet ? 24 : 0,
+          }}>
+            <TouchableWithoutFeedback>
+              <View style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: 16,
+                width: isTablet ? 380 : "90%",
+                maxHeight: 500,
+                elevation: 10,
+                shadowColor: "#0F172A",
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.15,
+                shadowRadius: 16,
+                borderWidth: 1,
+                borderColor: "#E2E8F0",
+                overflow: "hidden",
+              }}>
+                {/* Modal Header */}
+                <View style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: 16,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "#F1F5F9",
+                  backgroundColor: "#F8FAFC",
+                }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="notifications-outline" size={20} color={Theme.primary} />
+                    <Text style={{ fontSize: 16, fontFamily: Fonts.bold, color: "#0F172A" }}>
+                      Notifications
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    {unreadCount > 0 && (
+                      <TouchableOpacity onPress={() => {
+                        markAllAsRead();
+                        showToast({ type: "success", message: "All Read", subtitle: "Notifications marked as read." });
+                      }}>
+                        <Text style={{ fontSize: 12, fontFamily: Fonts.semiBold, color: Theme.primary }}>
+                          Read All
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity onPress={() => setIsNotifModalVisible(false)}>
+                      <Ionicons name="close" size={22} color="#64748B" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Modal Content */}
+                <ScrollView 
+                  contentContainerStyle={{ padding: 16, gap: 10 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {notifications.length === 0 ? (
+                    <View style={{
+                      paddingVertical: 40,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 12,
+                    }}>
+                      <View style={{
+                        width: 56,
+                        height: 56,
+                        borderRadius: 28,
+                        backgroundColor: "#F1F5F9",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}>
+                        <Ionicons name="notifications-off-outline" size={26} color="#94A3B8" />
+                      </View>
+                      <Text style={{ fontSize: 14, fontFamily: Fonts.medium, color: "#64748B" }}>
+                        No new notifications
+                      </Text>
+                    </View>
+                  ) : (
+                    notifications.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        onPress={() => {
+                          // If it is a QR order, we can close modal and help them locate the table
+                          setIsNotifModalVisible(false);
+                          if (item.tableNo && item.section) {
+                            const sectionMap: Record<string, string> = { "1": "SECTION_1", "2": "SECTION_2", "3": "SECTION_3", "4": "TAKEAWAY" };
+                            const normalizedSection = sectionMap[String(item.section)] || item.section;
+                            setActiveTab(normalizedSection);
+                            showToast({
+                              type: "info",
+                              message: item.title,
+                              subtitle: `Viewing ${normalizedSection.replace("_", " ")} Table ${item.tableNo}`,
+                            });
+                          }
+                        }}
+                        activeOpacity={0.8}
+                        style={{
+                          backgroundColor: item.read ? "#F8FAFC" : "#FFF7ED",
+                          borderWidth: 1.2,
+                          borderColor: item.read ? "#E2E8F0" : "#FED7AA",
+                          borderRadius: 12,
+                          padding: 12,
+                          flexDirection: "row",
+                          gap: 10,
+                        }}
+                      >
+                        <View style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                          backgroundColor: item.read ? "#F1F5F9" : "#FFEDD5",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}>
+                          <Ionicons 
+                            name={item.type === "QR_ORDER" ? "qr-code-outline" : "information-circle-outline"} 
+                            size={18} 
+                            color={item.read ? "#64748B" : Theme.primary} 
+                          />
+                        </View>
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                            <Text style={{ fontSize: 13, fontFamily: Fonts.bold, color: "#0F172A" }}>
+                              {item.title}
+                            </Text>
+                            <Text style={{ fontSize: 10, fontFamily: Fonts.medium, color: "#94A3B8" }}>
+                              {item.time}
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: 11, fontFamily: Fonts.medium, color: "#475569" }} numberOfLines={2}>
+                            {item.message}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            useNotificationStore.getState().removeNotification(item.id);
+                          }}
+                          style={{
+                            padding: 4,
+                            alignSelf: "flex-start",
+                          }}
+                        >
+                          <Ionicons name="close" size={16} color="#94A3B8" />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </ScrollView>
+
+                {/* Modal Footer */}
+                {notifications.length > 0 && (
+                  <View style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderTopWidth: 1,
+                    borderTopColor: "#F1F5F9",
+                    backgroundColor: "#F8FAFC",
+                    alignItems: "center",
+                  }}>
+                    <TouchableOpacity 
+                      onPress={() => {
+                        useNotificationStore.getState().clearNotifications();
+                        showToast({ type: "success", message: "Cleared", subtitle: "All notifications cleared." });
+                      }}
+                      style={{
+                        paddingVertical: 6,
+                        paddingHorizontal: 16,
+                        borderRadius: 8,
+                        backgroundColor: "#F1F5F9",
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontFamily: Fonts.bold, color: "#ef4444" }}>
+                        Clear All
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       {/* General Settings Modal */}
 
       {/* Floating AI Chat Assistant Button */}
@@ -4179,6 +4604,7 @@ export default function Category() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      {isTablet && renderLicenseView(true)}
     </SafeAreaView>
   );
 }

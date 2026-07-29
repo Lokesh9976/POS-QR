@@ -6,6 +6,7 @@ import { useOrderContextStore } from "../stores/orderContextStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
 import { API_URL } from "../constants/Config";
 import UniversalPrinter from "../components/UniversalPrinter";
+import { useNotificationStore } from "../stores/notificationStore";
 
 /**
  * useGlobalSocketSync
@@ -71,6 +72,22 @@ export function useGlobalSocketSync() {
         payload?.context?.entryStatus === "q" ||
         payload?.entryStatus === "q" ||
         payload?.context?.orderSource === "QR";
+
+      // Add notification for QR orders
+      if (isQrOrder) {
+        const tableLabel = payload.context?.orderType === "TAKEAWAY" 
+          ? `Takeaway ${payload.context.takeawayNo || ""}` 
+          : `${payload.context?.section || ""} • Table ${payload.context?.tableNo || ""}`;
+        
+        useNotificationStore.getState().addNotification({
+          title: "New QR Order",
+          message: `Order #${payload.orderId} submitted for ${tableLabel}`,
+          type: "QR_ORDER",
+          orderId: payload.orderId,
+          tableNo: payload.context?.tableNo,
+          section: payload.context?.section
+        });
+      }
 
       const paymentStatus = payload?.context?.paymentStatus !== undefined
         ? Number(payload.context.paymentStatus)

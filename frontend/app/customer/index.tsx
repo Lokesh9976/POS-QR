@@ -13,6 +13,7 @@ import {
   Animated,
   Image,
   Modal,
+  Dimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { API_URL } from "../../constants/Config";
@@ -21,21 +22,27 @@ import { useCartStore } from "../../stores/cartStore";
 import { useCompanySettingsStore } from "../../stores/companySettingsStore";
 import { Ionicons } from "@expo/vector-icons";
 
-// ─── Design Tokens ────────────────────────────────────────────────────────────
+const { width } = Dimensions.get("window");
+
+// ─── Premium Design System Tokens ──────────────────────────────────────────
 const C = {
-  bg:          "#F8F9FA",      // soft light background
-  surface:     "#FFFFFF",      // card surface
-  surfaceHigh: "#F1F5F9",      // elevated input surface
-  border:      "#E2E8F0",      // subtle border
-  gold:        "#FF5E1A",      // Wagba vibrant orange
-  goldDim:     "#E04D10",      // darker orange for pressed states
-  goldSoft:    "rgba(255, 94, 26, 0.08)", // faint orange tint
-  white:       "#0F172A",      // text primary
-  muted:       "#64748B",      // text secondary
-  error:       "#EF4444",      // error red
-  errorBg:     "rgba(239, 68, 68, 0.08)",
-  errorBorder: "rgba(239, 68, 68, 0.2)",
-  success:     "#10B981",
+  orangePrimary: "#FF5E1A",
+  orangeDark:    "#E04D10",
+  orangeLight:   "#FF8038",
+  orangeBg:      "#FFA366",
+  bg:            "#F1F5F9",
+  cardSurface:   "#FFFFFF",
+  inputBg:       "#F8FAFC",
+  border:        "#E2E8F0",
+  borderFocus:   "#FF5E1A",
+  textDark:      "#0F172A",        // High contrast primary slate
+  textMedium:    "#334155",        // Dark secondary charcoal
+  textMuted:     "#64748B",
+  textPlaceholder: "#94A3B8",
+  orangeTint:    "rgba(255, 94, 26, 0.07)",
+  orangeSoft:    "#FFF2EC",
+  error:         "#EF4444",
+  success:       "#10B981",
 };
 
 export default function CustomerWelcomeScreen() {
@@ -65,31 +72,52 @@ export default function CustomerWelcomeScreen() {
   const [regPassword, setRegPassword] = useState("");
   const [regConfirmPassword, setRegConfirmPassword] = useState("");
   const [regPromoCode, setRegPromoCode] = useState("");
+  const [agreedToTerms, setAgreedToTerms] = useState(true);
+
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [popupConfig, setPopupConfig] = useState<{ title: string; message: string } | null>(null);
 
   const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState("");
   const [transitioning, setTransitioning] = useState(false);
   const [foodIndex, setFoodIndex] = useState(0);
 
-  // Spin animation for full screen transition
+  // Animations
   const spinValue = useRef(new Animated.Value(0)).current;
   const scaleValue = useRef(new Animated.Value(1)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(25)).current;
+  const tabAnim   = useRef(new Animated.Value(0)).current;
 
   const foodEmojis = ["🍕", "🍔", "🌮", "🍜", "🍰", "☕"];
+
+  // Continuous subtle floating & pulsing animation
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, { toValue: -8, duration: 2200, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0, duration: 2200, useNativeDriver: true }),
+      ])
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.06, duration: 1600, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1600, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
 
   useEffect(() => {
     let interval: any;
     if (transitioning) {
-      // Fast cycling of food emojis
       interval = setInterval(() => {
         setFoodIndex((prev) => (prev + 1) % foodEmojis.length);
       }, 150);
 
-      // Spin rotation loop
       spinValue.setValue(0);
       Animated.loop(
         Animated.timing(spinValue, {
@@ -99,7 +127,6 @@ export default function CustomerWelcomeScreen() {
         })
       ).start();
 
-      // Bouncing pulse animation loop
       Animated.loop(
         Animated.sequence([
           Animated.timing(scaleValue, { toValue: 1.25, duration: 250, useNativeDriver: true }),
@@ -118,16 +145,11 @@ export default function CustomerWelcomeScreen() {
     outputRange: ["0deg", "360deg"],
   });
 
-  // Animations
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const tabAnim   = useRef(new Animated.Value(0)).current;
-
   useEffect(() => {
     useCompanySettingsStore.getState().fetchSettings?.();
     Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 500, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 500, useNativeDriver: true }),
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 450, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 450, useNativeDriver: true }),
     ]).start();
   }, []);
 
@@ -160,7 +182,6 @@ export default function CustomerWelcomeScreen() {
           return;
         }
       }
-      // Default fallback for development/testing
       setScannedTable({
         tableId: "1",
         tableNo: "1",
@@ -179,10 +200,9 @@ export default function CustomerWelcomeScreen() {
 
   const switchTab = (tab: "signin" | "signup") => {
     setActiveTab(tab);
-    setAuthError("");
     Animated.timing(tabAnim, {
       toValue: tab === "signin" ? 0 : 1,
-      duration: 250,
+      duration: 200,
       useNativeDriver: false,
     }).start();
   };
@@ -217,7 +237,7 @@ export default function CustomerWelcomeScreen() {
 
   const handleSignIn = async () => {
     if (!loginUsername.trim() || !loginPassword.trim()) {
-      showPopup("Error", "Please enter your name and password.");
+      showPopup("Error", "Please enter your username and password.");
       return;
     }
     setAuthLoading(true);
@@ -252,11 +272,15 @@ export default function CustomerWelcomeScreen() {
 
   const handleSignUp = async () => {
     if (!regUsername.trim() || !regPhone.trim() || !regPassword.trim()) {
-      showPopup("Error", "Please fill out all fields.");
+      showPopup("Error", "Please fill out all required fields.");
       return;
     }
     if (regPassword !== regConfirmPassword) {
       showPopup("Error", "Passwords do not match.");
+      return;
+    }
+    if (!agreedToTerms) {
+      showPopup("Terms Required", "Please accept the Terms & Conditions to proceed.");
       return;
     }
     setAuthLoading(true);
@@ -308,33 +332,52 @@ export default function CustomerWelcomeScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      {/* Background decorative glows */}
-      <View style={styles.glowTopRight} />
-      <View style={styles.glowBottomLeft} />
+      {/* ── Dynamic Organic Top Header Wave ── */}
+      <View style={styles.headerWaveBackground}>
+        <Animated.View style={[styles.headerWaveCircleLarge, { transform: [{ translateY: floatAnim }] }]} />
+        <Animated.View style={[styles.headerWaveCircleSmall, { transform: [{ translateY: Animated.multiply(floatAnim, -1) }] }]} />
+        
+        {/* Floating Geo accents */}
+        <Animated.View style={[styles.floatingGeo, { top: 40, right: 36, width: 14, height: 14, borderRadius: 7, transform: [{ translateY: floatAnim }] }]} />
+        <Animated.View style={[styles.floatingGeo, { top: 95, left: 45, width: 12, height: 12, transform: [{ rotate: '45deg' }, { translateY: floatAnim }] }]} />
+        <Animated.View style={[styles.floatingGeoRing, { top: 130, right: 80, transform: [{ translateY: Animated.multiply(floatAnim, -1.2) }] }]} />
+      </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
+        {/* Top Header Bar */}
+        <View style={styles.topBar}>
+          <TouchableOpacity activeOpacity={0.75} style={styles.backBtn} onPress={() => handleGuest()}>
+            <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+            <Text style={styles.backBtnText}>Back</Text>
+          </TouchableOpacity>
 
-          {/* ── Logo ── */}
-          <View style={styles.logoSection}>
-            <View style={styles.logoBadge}>
-              {logoUri ? (
-                <Image source={{ uri: logoUri }} style={{ width: "100%", height: "100%", borderRadius: 18, resizeMode: "cover" }} />
-              ) : (
-                <Ionicons name="restaurant" size={30} color={C.gold} />
-              )}
+          {scannedTable && (
+            <View style={styles.tablePill}>
+              <Ionicons name="location-sharp" size={13} color="#FFFFFF" />
+              <Text style={styles.tablePillText}>Table {scannedTable.tableNo}</Text>
             </View>
-            <Text style={styles.appTitle}>{settings?.name || "Wagba"}</Text>
-            <Text style={styles.appSubtitle}>Restaurant Ordering System</Text>
-            {scannedTable && (
-              <View style={styles.tablePill}>
-                <Ionicons name="location-sharp" size={12} color={C.gold} />
-                <Text style={styles.tablePillText}>Table {scannedTable.tableNo}</Text>
+          )}
+        </View>
+
+        <Animated.View style={[styles.containerCard, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+
+          {/* ── Brand Logo Section ── */}
+          <View style={styles.logoSection}>
+            <Animated.View style={[styles.logoBadgeContainer, { transform: [{ scale: pulseAnim }] }]}>
+              <View style={styles.logoBadgeInner}>
+                {logoUri ? (
+                  <Image source={{ uri: logoUri }} style={styles.logoImage} />
+                ) : (
+                  <View style={styles.foodIllustration}>
+                    <Ionicons name="restaurant" size={36} color={C.orangePrimary} />
+                  </View>
+                )}
               </View>
-            )}
+            </Animated.View>
+            <Text style={styles.brandTitle}>{settings?.name || "Smart POS"}</Text>
           </View>
 
-          {/* ── Segmented Tabs ── */}
+          {/* ── Tab Selector (Sign In | Sign Up) ── */}
           <View style={styles.tabBar}>
             <TouchableOpacity
               activeOpacity={0.8}
@@ -352,69 +395,96 @@ export default function CustomerWelcomeScreen() {
             </TouchableOpacity>
           </View>
 
-
+          {/* ── Subtitle ── */}
+          <View style={styles.authHeaderBox}>
+            <Text style={styles.authTitle}>
+              {activeTab === "signin" ? "Hello" : "Create Account"}
+            </Text>
+            <Text style={styles.authSubtitle}>
+              {activeTab === "signin" ? "Sign into your Account" : "Sign up to start ordering"}
+            </Text>
+          </View>
 
           {/* ═══════════════ SIGN IN ═══════════════ */}
           {activeTab === "signin" && (
-            <View style={styles.form}>
-              <DarkField
-                icon="person-outline"
-                label="USER NAME"
-                placeholder="Enter your name"
+            <View style={styles.formContainer}>
+              <CardField
+                label="Email ID or Username*"
+                placeholder="valentino@gmail.com"
                 value={loginUsername}
                 onChangeText={setLoginUsername}
+                icon="mail-outline"
                 autoCapitalize="none"
               />
-              <DarkField
-                icon="lock-closed-outline"
-                label="PASSWORD"
-                placeholder="Enter your password"
+              <CardField
+                label="Password*"
+                placeholder="••••••••••••"
                 value={loginPassword}
                 onChangeText={setLoginPassword}
+                icon="lock-closed-outline"
                 secureTextEntry={!showLoginPassword}
                 rightIcon={showLoginPassword ? "eye-off-outline" : "eye-outline"}
                 onRightIconPress={() => setShowLoginPassword(!showLoginPassword)}
               />
 
-              <TouchableOpacity activeOpacity={0.85} style={styles.primaryBtn} onPress={handleSignIn} disabled={authLoading}>
-                {authLoading
-                  ? <ActivityIndicator color={C.bg} />
-                  : <Text style={styles.primaryBtnText}>Sign In</Text>}
+              <TouchableOpacity activeOpacity={0.7} style={styles.forgotBtn} onPress={() => showPopup("Password Reset", "Please contact store staff to reset your login password.")}>
+                <Text style={styles.forgotText}>Forgot your Password?</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity activeOpacity={0.85} style={styles.primaryPillBtn} onPress={handleSignIn} disabled={authLoading}>
+                {authLoading
+                  ? <ActivityIndicator color="#FFFFFF" size="small" />
+                  : <Text style={styles.primaryPillBtnText}>Login</Text>}
+              </TouchableOpacity>
+
+              {/* Continue as Guest Button */}
+              <View style={styles.guestSection}>
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+                <TouchableOpacity activeOpacity={0.8} style={styles.guestPillBtn} onPress={handleGuest}>
+                  <Ionicons name="person-outline" size={18} color={C.orangePrimary} />
+                  <Text style={styles.guestPillBtnText}>Continue as Guest</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Switch to Register */}
+              <View style={styles.switchAuthRow}>
+                <Text style={styles.switchAuthText}>Don't have an account? </Text>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => switchTab("signup")}>
+                  <Text style={styles.switchAuthLink}>Register Now</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
           {/* ═══════════════ SIGN UP ═══════════════ */}
           {activeTab === "signup" && (
-            <View style={styles.form}>
-              <DarkField icon="person-outline" label="USER NAME" placeholder="Enter your name" value={regUsername} onChangeText={setRegUsername} autoCapitalize="none" />
-              
+            <View style={styles.formContainer}>
+              <CardField
+                label="User Name*"
+                placeholder="Valentino Morose"
+                value={regUsername}
+                onChangeText={setRegUsername}
+                icon="person-outline"
+              />
+
               {/* Phone Field with Country Code Selection */}
-              <View style={fieldStyles.field}>
-                <Text style={fieldStyles.label}>PHONE NUMBER *</Text>
-                <View style={[fieldStyles.inputWrap, { alignItems: 'center' }]}>
-                  <Ionicons name="call-outline" size={18} color={C.muted} style={fieldStyles.icon} />
-                  <TouchableOpacity 
-                    onPress={selectCountryCode} 
-                    style={{ 
-                      flexDirection: 'row', 
-                      alignItems: 'center', 
-                      paddingRight: 8, 
-                      borderRightWidth: 1, 
-                      borderRightColor: C.border || '#e2e8f0', 
-                      marginRight: 8,
-                      height: '100%',
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <Text style={{ color: '#000', fontSize: 14, fontWeight: '500' }}>
-                      {regCountryCode} ▾
-                    </Text>
+              <View style={cardFieldStyles.fieldBox}>
+                <Text style={cardFieldStyles.fieldLabel}>Phone Number*</Text>
+                <View style={cardFieldStyles.inputWrap}>
+                  <View style={cardFieldStyles.iconBadge}>
+                    <Ionicons name="call-outline" size={18} color={C.orangePrimary} />
+                  </View>
+                  <TouchableOpacity onPress={selectCountryCode} style={cardFieldStyles.countryPicker}>
+                    <Text style={cardFieldStyles.countryText}>{regCountryCode} ▾</Text>
                   </TouchableOpacity>
                   <TextInput
-                    style={[fieldStyles.input, { flex: 1 }]}
+                    style={cardFieldStyles.input}
                     placeholder="Enter phone number"
-                    placeholderTextColor={C.muted}
+                    placeholderTextColor={C.textPlaceholder}
                     value={regPhone}
                     onChangeText={(t) => setRegPhone(t.replace(/[^0-9]/g, ''))}
                     keyboardType="phone-pad"
@@ -422,150 +492,185 @@ export default function CustomerWelcomeScreen() {
                 </View>
               </View>
 
-              <DarkField icon="mail-outline" label="EMAIL ID" placeholder="Enter email address (optional)" value={regEmail} onChangeText={setRegEmail} autoCapitalize="none" keyboardType="email-address" />
-              <DarkField
-                icon="lock-closed-outline" label="PASSWORD *" placeholder="Create a password"
-                value={regPassword} onChangeText={setRegPassword}
+              <CardField
+                label="Email ID*"
+                placeholder="valentino@gmail.com"
+                value={regEmail}
+                onChangeText={setRegEmail}
+                icon="mail-outline"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <CardField
+                label="Password*"
+                placeholder="••••••••••••"
+                value={regPassword}
+                onChangeText={setRegPassword}
+                icon="lock-closed-outline"
                 secureTextEntry={!showRegPassword}
                 rightIcon={showRegPassword ? "eye-off-outline" : "eye-outline"}
                 onRightIconPress={() => setShowRegPassword(!showRegPassword)}
               />
-              <DarkField
-                icon="shield-checkmark-outline" label="CONFIRM PASSWORD *" placeholder="Re-enter password"
-                value={regConfirmPassword} onChangeText={setRegConfirmPassword}
+
+              <CardField
+                label="Confirm Password*"
+                placeholder="••••••••••••"
+                value={regConfirmPassword}
+                onChangeText={setRegConfirmPassword}
+                icon="shield-checkmark-outline"
                 secureTextEntry={!showRegConfirmPassword}
                 rightIcon={showRegConfirmPassword ? "eye-off-outline" : "eye-outline"}
                 onRightIconPress={() => setShowRegConfirmPassword(!showRegConfirmPassword)}
               />
-              <DarkField icon="pricetag-outline" label="PROMO CODE" placeholder="Optional promo code" value={regPromoCode} onChangeText={setRegPromoCode} autoCapitalize="characters" />
 
-              <TouchableOpacity activeOpacity={0.85} style={styles.primaryBtn} onPress={handleSignUp} disabled={authLoading}>
-                {authLoading
-                  ? <ActivityIndicator color={C.bg} />
-                  : <Text style={styles.primaryBtnText}>Create Account</Text>}
+              <CardField
+                label="Promo Code"
+                placeholder="Optional promo code"
+                value={regPromoCode}
+                onChangeText={setRegPromoCode}
+                icon="pricetag-outline"
+                autoCapitalize="characters"
+              />
+
+              {/* Terms & Conditions Checkbox */}
+              <TouchableOpacity 
+                activeOpacity={0.8}
+                style={styles.termsRow}
+                onPress={() => setAgreedToTerms(!agreedToTerms)}
+              >
+                <View style={[styles.checkbox, agreedToTerms && styles.checkboxActive]}>
+                  {agreedToTerms && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
+                </View>
+                <Text style={styles.termsText}>
+                  I Read and agree to <Text style={styles.termsLink}>Terms & Conditions</Text>
+                </Text>
               </TouchableOpacity>
 
-              <View style={styles.footerRow}>
-                <Text style={styles.footerText}>Already have an account? </Text>
-                <TouchableOpacity onPress={() => switchTab("signin")}>
-                  <Text style={styles.footerLink}>Sign In</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+              <TouchableOpacity activeOpacity={0.85} style={styles.primaryPillBtn} onPress={handleSignUp} disabled={authLoading}>
+                {authLoading
+                  ? <ActivityIndicator color="#FFFFFF" size="small" />
+                  : <Text style={styles.primaryPillBtnText}>Register Now</Text>}
+              </TouchableOpacity>
 
-          {/* ── Divider + Guest option ── */}
-          {activeTab === "signin" && (
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or</Text>
-              <View style={styles.dividerLine} />
-            </View>
-          )}
-          {activeTab === "signin" && (
-            <TouchableOpacity activeOpacity={0.8} style={styles.guestBtn} onPress={handleGuest}>
-              <Ionicons name="person-circle-outline" size={18} color={C.gold} />
-              <Text style={styles.guestBtnText}>Continue as Guest</Text>
-            </TouchableOpacity>
-          )}
-
-         </Animated.View>
-       </ScrollView>
-
-       {showPicker && (
-         <Modal transparent visible={showPicker} animationType="fade">
-           <TouchableOpacity 
-             style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }} 
-             activeOpacity={1}
-             onPress={() => setShowPicker(false)}
-           >
-             <View style={{ width: 280, backgroundColor: '#fff', borderRadius: 16, padding: 20, gap: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 5 }}>
-               <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 12, color: '#1e293b' }}>Select Country Code</Text>
-                {[
-                  { label: "Singapore (+65)", value: "+65" },
-                  { label: "Malaysia (+60)", value: "+60" },
-                  { label: "India (+91)", value: "+91" },
-                  { label: "Indonesia (+62)", value: "+62" },
-                  { label: "USA (+1)", value: "+1" }
-                ].map((item) => (
-                  <TouchableOpacity 
-                    key={item.value} 
-                    style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}
-                    onPress={() => {
-                      setRegCountryCode(item.value);
-                      setShowPicker(false);
-                    }}
-                  >
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: '#334155' }}>{item.label}</Text>
-                  </TouchableOpacity>
-                ))}
-               <TouchableOpacity 
-                 style={{ marginTop: 12, paddingVertical: 12, alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 8 }}
-                 onPress={() => setShowPicker(false)}
-               >
-                 <Text style={{ fontSize: 14, fontWeight: '700', color: '#64748b' }}>Cancel</Text>
-               </TouchableOpacity>
-             </View>
-           </TouchableOpacity>
-         </Modal>
-       )}
-
-        {popupConfig && (
-          <Modal transparent visible={!!popupConfig} animationType="fade">
-            <TouchableOpacity 
-              style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }} 
-              activeOpacity={1}
-              onPress={() => setPopupConfig(null)}
-            >
-              <View style={{ width: '100%', maxWidth: 320, backgroundColor: '#fff', borderRadius: 20, padding: 24, alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.15, shadowRadius: 16, elevation: 8 }}>
-                <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#fef2f2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
-                  <Ionicons name="alert-circle" size={32} color="#ef4444" />
+              {/* Continue as Guest Button */}
+              <View style={styles.guestSection}>
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
                 </View>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: '#1e293b', marginBottom: 8, textAlign: 'center' }}>{popupConfig.title}</Text>
-                <Text style={{ fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>{popupConfig.message}</Text>
-                <TouchableOpacity 
-                  style={{ width: '100%', paddingVertical: 12, alignItems: 'center', backgroundColor: C.gold || '#FF5E1A', borderRadius: 12 }}
-                  onPress={() => setPopupConfig(null)}
-                >
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>OK</Text>
+                <TouchableOpacity activeOpacity={0.8} style={styles.guestPillBtn} onPress={handleGuest}>
+                  <Ionicons name="person-outline" size={18} color={C.orangePrimary} />
+                  <Text style={styles.guestPillBtnText}>Continue as Guest</Text>
                 </TouchableOpacity>
               </View>
-            </TouchableOpacity>
-          </Modal>
-        )}
 
-        {transitioning && (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#ffffff", justifyContent: "center", alignItems: "center", zIndex: 99999 }]}>
-            <View style={{ justifyContent: "center", alignItems: "center" }}>
-              <Animated.View style={{ transform: [{ rotate: spinRotation }] }}>
-                <View style={{ width: 88, height: 88, borderRadius: 44, borderWidth: 4, borderColor: "#FF5E1A", borderTopColor: "transparent", borderRightColor: "transparent" }} />
-              </Animated.View>
-              <View style={{ position: "absolute", width: 56, height: 56, borderRadius: 28, backgroundColor: "#FFF2EC", justifyContent: "center", alignItems: "center" }}>
-                <Animated.Text style={{ fontSize: 26, transform: [{ scale: scaleValue }] }}>
-                  {foodEmojis[foodIndex]}
-                </Animated.Text>
+              {/* Switch to Sign In */}
+              <View style={styles.switchAuthRow}>
+                <Text style={styles.switchAuthText}>Already have an account? </Text>
+                <TouchableOpacity activeOpacity={0.7} onPress={() => switchTab("signin")}>
+                  <Text style={styles.switchAuthLink}>Login</Text>
+                </TouchableOpacity>
               </View>
             </View>
-            <Text style={{ marginTop: 28, fontSize: 18, fontWeight: "700", color: "#0F172A", letterSpacing: 0.5 }}>
-              Entering Restaurant...
-            </Text>
-            <Text style={{ marginTop: 8, fontSize: 13, color: "#64748B" }}>
-              Setting up your digital menu
-            </Text>
+          )}
+
+        </Animated.View>
+      </ScrollView>
+
+      {/* Country Code Selection Modal */}
+      {showPicker && (
+        <Modal transparent visible={showPicker} animationType="fade">
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1}
+            onPress={() => setShowPicker(false)}
+          >
+            <View style={styles.pickerModalContent}>
+              <Text style={styles.pickerModalTitle}>Select Country Code</Text>
+              {[
+                { label: "Singapore (+65)", value: "+65" },
+                { label: "Malaysia (+60)", value: "+60" },
+                { label: "India (+91)", value: "+91" },
+                { label: "Indonesia (+62)", value: "+62" },
+                { label: "USA (+1)", value: "+1" }
+              ].map((item) => (
+                <TouchableOpacity 
+                  key={item.value} 
+                  style={styles.pickerItem}
+                  onPress={() => {
+                    setRegCountryCode(item.value);
+                    setShowPicker(false);
+                  }}
+                >
+                  <Text style={styles.pickerItemText}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity 
+                style={styles.pickerCancelBtn}
+                onPress={() => setShowPicker(false)}
+              >
+                <Text style={styles.pickerCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* Popup Alert Modal */}
+      {popupConfig && (
+        <Modal transparent visible={!!popupConfig} animationType="fade">
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            activeOpacity={1}
+            onPress={() => setPopupConfig(null)}
+          >
+            <View style={styles.alertModalContent}>
+              <View style={styles.alertIconBadge}>
+                <Ionicons name="alert-circle-outline" size={32} color={C.orangePrimary} />
+              </View>
+              <Text style={styles.alertModalTitle}>{popupConfig.title}</Text>
+              <Text style={styles.alertModalMessage}>{popupConfig.message}</Text>
+              <TouchableOpacity 
+                style={styles.alertOkBtn}
+                onPress={() => setPopupConfig(null)}
+              >
+                <Text style={styles.alertOkText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      )}
+
+      {/* Transition Screen Overlay */}
+      {transitioning && (
+        <View style={styles.transitionScreen}>
+          <View style={{ width: 92, height: 92, justifyContent: "center", alignItems: "center", marginBottom: 20 }}>
+            <Animated.View style={{ position: "absolute", transform: [{ rotate: spinRotation }] }}>
+              <View style={styles.transitionSpinnerOuter} />
+            </Animated.View>
+            <View style={styles.transitionEmojiBadge}>
+              <Animated.Text style={{ fontSize: 28, transform: [{ scale: scaleValue }] }}>
+                {foodEmojis[foodIndex]}
+              </Animated.Text>
+            </View>
           </View>
-        )}
+          <Text style={styles.transitionTitle}>Entering Restaurant...</Text>
+          <Text style={styles.transitionSubtitle}>Setting up your digital menu</Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
 
-
-
-interface DarkFieldProps {
-  icon: any;
+// ─── Modern Card Input Field Component ─────────────────────────────────────
+interface CardFieldProps {
   label: string;
   placeholder: string;
   value: string;
   onChangeText: (t: string) => void;
+  icon?: any;
   secureTextEntry?: boolean;
   rightIcon?: any;
   onRightIconPress?: () => void;
@@ -573,36 +678,44 @@ interface DarkFieldProps {
   keyboardType?: any;
 }
 
-function DarkField({
-  icon,
+function CardField({
   label,
   placeholder,
   value,
   onChangeText,
+  icon,
   secureTextEntry,
   rightIcon,
   onRightIconPress,
   autoCapitalize,
   keyboardType,
-}: DarkFieldProps) {
+}: CardFieldProps) {
+  const [isFocused, setIsFocused] = useState(false);
+
   return (
-    <View style={fieldStyles.field}>
-      <Text style={fieldStyles.label}>{label}</Text>
-      <View style={fieldStyles.inputWrap}>
-        <Ionicons name={icon} size={18} color={C.muted} style={fieldStyles.icon} />
+    <View style={cardFieldStyles.fieldBox}>
+      <Text style={cardFieldStyles.fieldLabel}>{label}</Text>
+      <View style={[cardFieldStyles.inputWrap, isFocused && cardFieldStyles.inputWrapFocused]}>
+        {icon && (
+          <View style={cardFieldStyles.iconBadge}>
+            <Ionicons name={icon} size={18} color={isFocused ? C.orangePrimary : C.textMuted} />
+          </View>
+        )}
         <TextInput
-          style={fieldStyles.input}
+          style={cardFieldStyles.input}
           placeholder={placeholder}
-          placeholderTextColor={C.muted}
+          placeholderTextColor={C.textPlaceholder}
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={secureTextEntry}
           autoCapitalize={autoCapitalize}
           keyboardType={keyboardType}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
         />
         {rightIcon && (
-          <TouchableOpacity onPress={onRightIconPress} style={fieldStyles.eye}>
-            <Ionicons name={rightIcon} size={18} color={C.muted} />
+          <TouchableOpacity onPress={onRightIconPress} style={cardFieldStyles.rightIconTouch}>
+            <Ionicons name={rightIcon} size={19} color={isFocused ? C.orangePrimary : C.textMuted} />
           </TouchableOpacity>
         )}
       </View>
@@ -610,133 +723,539 @@ function DarkField({
   );
 }
 
-const fieldStyles = StyleSheet.create({
-  field:     { gap: 6 },
-  label:     { fontSize: 11, fontWeight: "700", color: C.muted, letterSpacing: 0.5 },
+const cardFieldStyles = StyleSheet.create({
+  fieldBox: {
+    marginBottom: 18,
+  },
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#334155",
+    marginBottom: 6,
+    letterSpacing: 0.2,
+  },
   inputWrap: {
-    height: 50,
+    height: 52,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: C.surfaceHigh,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
     paddingHorizontal: 12,
   },
-  icon:   { marginRight: 8 },
-  input:  { flex: 1, fontSize: 14, fontWeight: "500", color: C.white, height: "100%" },
-  eye:    { padding: 6 },
+  inputWrapFocused: {
+    borderColor: C.orangePrimary,
+    backgroundColor: "#FFF5ED",
+    shadowColor: C.orangePrimary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+  },
+  iconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+  },
+  input: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+    height: "100%",
+  },
+  rightIconTouch: {
+    padding: 6,
+  },
+  countryPicker: {
+    paddingRight: 10,
+    marginRight: 8,
+    borderRightWidth: 1.5,
+    borderRightColor: "#CBD5E1",
+  },
+  countryText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
 });
 
 // ─── Main StyleSheet ──────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  scroll: { flexGrow: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40, paddingHorizontal: 16 },
-
-  // Decorative background glows
-  glowTopRight: {
-    position: "absolute", top: 0, right: 0,
-    width: 220, height: 220, borderRadius: 110,
-    backgroundColor: "rgba(255, 94, 26, 0.04)",
+  root: {
+    flex: 1,
+    backgroundColor: C.bg,
   },
-  glowBottomLeft: {
-    position: "absolute", bottom: 0, left: 0,
-    width: 180, height: 180, borderRadius: 90,
-    backgroundColor: "rgba(255, 94, 26, 0.03)",
+  scroll: {
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingBottom: 40,
   },
 
-  // Card
-  card: {
-    width: "100%", maxWidth: 420,
-    backgroundColor: C.surface,
-    borderRadius: 28,
-    paddingVertical: 36, paddingHorizontal: 24,
-    borderWidth: 1, borderColor: C.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 16 },
-    shadowOpacity: 0.05,
-    shadowRadius: 32,
-    elevation: 8,
+  // Decorative header background wave
+  headerWaveBackground: {
+    position: "absolute",
+    top: -50,
+    left: -40,
+    right: -40,
+    height: 340,
+    backgroundColor: C.orangePrimary,
+    borderBottomLeftRadius: 160,
+    borderBottomRightRadius: 180,
+    overflow: "hidden",
+  },
+  headerWaveCircleLarge: {
+    position: "absolute",
+    top: -40,
+    right: -20,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: C.orangeLight,
+    opacity: 0.6,
+  },
+  headerWaveCircleSmall: {
+    position: "absolute",
+    top: 70,
+    right: 90,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: C.orangeBg,
+    opacity: 0.4,
+  },
+  floatingGeo: {
+    position: "absolute",
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  floatingGeoRing: {
+    position: "absolute",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2.5,
+    borderColor: "rgba(255,255,255,0.6)",
   },
 
-  // Logo section
-  logoSection: { alignItems: "center", marginBottom: 28 },
-  logoBadge: {
-    width: 68, height: 68, borderRadius: 20,
-    backgroundColor: C.goldSoft,
-    borderWidth: 1.5, borderColor: C.gold,
-    alignItems: "center", justifyContent: "center",
-    marginBottom: 14,
+  // Top header bar
+  topBar: {
+    width: "100%",
+    maxWidth: 440,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === "ios" ? 52 : 36,
+    paddingBottom: 16,
+    zIndex: 10,
   },
-  appTitle:    { fontSize: 22, fontWeight: "900", color: C.white, letterSpacing: 0.5 },
-  appSubtitle: { fontSize: 12, color: C.muted, marginTop: 3, fontWeight: "500" },
+  backBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,0,0,0.15)",
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+  },
+  backBtnText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
   tablePill: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: C.goldSoft,
-    borderWidth: 1, borderColor: C.gold,
-    paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 20, marginTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(255, 255, 255, 0.28)",
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 18,
   },
-  tablePillText: { fontSize: 12, fontWeight: "700", color: C.gold },
+  tablePillText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
 
-  // Tab switcher
+  // Main Card Container (Ultra-Elevated Modern Card)
+  containerCard: {
+    width: "92%",
+    maxWidth: 410,
+    backgroundColor: C.cardSurface,
+    borderRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 34,
+    marginTop: 8,
+    shadowColor: C.orangePrimary,
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.15,
+    shadowRadius: 30,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 94, 26, 0.12)",
+  },
+
+  // Brand Logo
+  logoSection: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  logoBadgeContainer: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    backgroundColor: C.orangeSoft,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: "rgba(255, 94, 26, 0.25)",
+  },
+  logoBadgeInner: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  logoImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 35,
+    resizeMode: "cover",
+  },
+  foodIllustration: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  brandTitle: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: C.textDark,
+    fontStyle: "italic",
+    letterSpacing: -0.5,
+  },
+
+  // Segmented Tab Switcher
   tabBar: {
     flexDirection: "row",
-    backgroundColor: C.surfaceHigh,
-    borderRadius: 14, padding: 4,
-    marginBottom: 24,
-    borderWidth: 1, borderColor: C.border,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 16,
+    padding: 4,
+    marginBottom: 22,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
   tabBtn: {
-    flex: 1, paddingVertical: 12,
-    borderRadius: 10, alignItems: "center",
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignItems: "center",
   },
   tabBtnActive: {
-    backgroundColor: C.gold,
-    shadowColor: C.gold, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35, shadowRadius: 8,
+    backgroundColor: C.orangePrimary,
+    shadowColor: C.orangePrimary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  tabText:       { fontSize: 14, fontWeight: "700", color: C.muted },
-  tabTextActive: { color: "#FFFFFF" },
-
-  // Error
-  errorBox: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: C.errorBg,
-    borderWidth: 1, borderColor: C.errorBorder,
-    borderRadius: 12, padding: 10, marginBottom: 16,
+  tabText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#64748B",
   },
-  errorText: { fontSize: 12, color: C.error, fontWeight: "600", flex: 1 },
+  tabTextActive: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+  },
 
-  // Form
-  form: { gap: 14 },
+  // Auth Header Text
+  authHeaderBox: {
+    alignItems: "center",
+    marginBottom: 22,
+  },
+  authTitle: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: C.textDark,
+    marginBottom: 4,
+  },
+  authSubtitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: C.textMuted,
+  },
 
-  // Primary button
-  primaryBtn: {
-    height: 52, borderRadius: 14,
-    backgroundColor: C.gold,
-    alignItems: "center", justifyContent: "center",
+  // Form Container
+  formContainer: {
+    width: "100%",
+  },
+
+  forgotBtn: {
+    alignSelf: "flex-end",
+    marginTop: -2,
+    marginBottom: 22,
+    paddingVertical: 4,
+  },
+  forgotText: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: C.orangePrimary,
+  },
+
+  // Primary Orange Pill Button
+  primaryPillBtn: {
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: C.orangePrimary,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: C.orangePrimary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.38,
+    shadowRadius: 12,
+    elevation: 6,
+    marginBottom: 22,
+  },
+  primaryPillBtnText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+
+  // Guest Option & Divider Styles
+  guestSection: {
+    alignItems: "center",
+    marginBottom: 22,
+    width: "100%",
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 16,
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1.5,
+    backgroundColor: "#E2E8F0",
+  },
+  dividerText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#64748B",
+  },
+  guestPillBtn: {
+    width: "100%",
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: C.orangePrimary,
+    backgroundColor: C.orangeTint,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  guestPillBtnText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: C.orangePrimary,
+  },
+
+  // Terms & Conditions Checkbox
+  termsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 22,
+    gap: 10,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: "#94A3B8",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkboxActive: {
+    backgroundColor: C.orangePrimary,
+    borderColor: C.orangePrimary,
+  },
+  termsText: {
+    fontSize: 13,
+    color: C.textMedium,
+    fontWeight: "600",
+  },
+  termsLink: {
+    color: C.orangePrimary,
+    fontWeight: "800",
+  },
+
+  // Switch Auth Row
+  switchAuthRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  switchAuthText: {
+    fontSize: 14,
+    color: C.textMuted,
+    fontWeight: "600",
+  },
+  switchAuthLink: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: C.orangePrimary,
+  },
+
+  // Modals & Overlay
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pickerModalContent: {
+    width: 300,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 22,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  pickerModalTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    marginBottom: 14,
+    color: C.textDark,
+  },
+  pickerItem: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  pickerItemText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: C.textDark,
+  },
+  pickerCancelBtn: {
+    marginTop: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: C.bg,
+    borderRadius: 12,
+  },
+  pickerCancelText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: C.textMuted,
+  },
+
+  alertModalContent: {
+    width: "85%",
+    maxWidth: 340,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 26,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  alertIconBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: C.orangeTint,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  alertModalTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: C.textDark,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  alertModalMessage: {
+    fontSize: 14,
+    color: C.textMuted,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  alertOkBtn: {
+    width: "100%",
+    paddingVertical: 14,
+    alignItems: "center",
+    backgroundColor: C.orangePrimary,
+    borderRadius: 24,
+  },
+  alertOkText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+
+  // Transition Screen Overlay
+  transitionScreen: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 99999,
+  },
+  transitionSpinnerOuter: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    borderWidth: 4,
+    borderColor: C.orangePrimary,
+    borderTopColor: "transparent",
+    borderRightColor: "transparent",
+  },
+  transitionEmojiBadge: {
+    position: "absolute",
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#FFF2EC",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  transitionTitle: {
     marginTop: 8,
-    shadowColor: C.gold, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.35, shadowRadius: 14,
-    elevation: 5,
+    fontSize: 19,
+    fontWeight: "800",
+    color: C.textDark,
+    letterSpacing: 0.5,
   },
-  primaryBtnText: { fontSize: 15, fontWeight: "800", color: "#FFFFFF" },
-
-  // Footer links
-  footerRow: { flexDirection: "row", justifyContent: "center", marginTop: 14 },
-  footerText: { fontSize: 13, color: C.muted, fontWeight: "500" },
-  footerLink: { fontSize: 13, fontWeight: "800", color: C.gold, textDecorationLine: "underline" },
-
-  // Divider
-  dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 20, marginBottom: 14 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: C.border },
-  dividerText: { fontSize: 12, color: C.muted, fontWeight: "600" },
-
-  // Guest button
-  guestBtn: {
-    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    height: 50, borderRadius: 14,
-    borderWidth: 1.5, borderColor: C.gold,
-    backgroundColor: C.goldSoft,
+  transitionSubtitle: {
+    marginTop: 6,
+    fontSize: 14,
+    color: C.textMuted,
   },
-  guestBtnText: { fontSize: 14, fontWeight: "700", color: C.gold },
 });

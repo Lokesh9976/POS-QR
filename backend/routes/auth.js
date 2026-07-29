@@ -15,6 +15,7 @@ router.post("/login", async (req, res) => {
     if (!pool) {
       return res.status(503).json({ success: false, message: "Database connection busy or unavailable." });
     }
+
     const { userName: rawUserName, password: rawPassword } = req.body;
     const userName = (rawUserName || "").trim();
     const password = (rawPassword || "").trim();
@@ -31,6 +32,7 @@ router.post("/login", async (req, res) => {
         SELECT 
           u.UserId, u.UserCode, u.UserName, u.UserPassword, u.FullName,
           u.FirstName, u.LastName, u.IsDisabled, u.UserGroupid,
+          u.FromDate, u.ToDate,
           g.UserGroupCode AS RoleCode, g.UserGroupName AS RoleName,
           g.isActive AS IsGroupActive
         FROM [dbo].[UserMaster] u
@@ -170,6 +172,28 @@ router.post("/login", async (req, res) => {
       }
     }
 
+    // ✅ VALIDATE USER-SPECIFIC LICENSE WINDOW
+    if (user.ToDate) {
+      const today = new Date();
+      const expDate = new Date(user.ToDate);
+      today.setHours(0,0,0,0);
+      expDate.setHours(0,0,0,0);
+      if (today > expDate) {
+        console.log(`[AUTH] Login failed: User "${user.UserName}" license expired on ${expDate.toISOString().split('T')[0]}`);
+        return res.status(403).json({ success: false, message: "License expired. Please contact administrator." });
+      }
+    }
+    if (user.FromDate) {
+      const today = new Date();
+      const fromDate = new Date(user.FromDate);
+      today.setHours(0,0,0,0);
+      fromDate.setHours(0,0,0,0);
+      if (today < fromDate) {
+        console.log(`[AUTH] Login failed: User "${user.UserName}" license not active until ${fromDate.toISOString().split('T')[0]}`);
+        return res.status(403).json({ success: false, message: "License not active yet. Please contact administrator." });
+      }
+    }
+
     // Update Last Login
     await pool.request()
       .input("UserId", user.UserId)
@@ -199,7 +223,9 @@ router.post("/login", async (req, res) => {
         fullName: user.FullName || user.FirstName,
         role: roleCode, // ADMIN, CASHIER, WAITER, etc.
         roleName: user.RoleName,
-        userGroupId: user.UserGroupid
+        userGroupId: user.UserGroupid,
+        licenseFromDate: user.FromDate,
+        licenseToDate: user.ToDate
       }
     });
   } catch (err) {

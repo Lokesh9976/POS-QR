@@ -15,6 +15,8 @@ export type AuthUser = {
   role: UserRole;
   roleName: string;
   userGroupId?: string;
+  licenseFromDate?: string;
+  licenseToDate?: string;
 };
 
 export type FormPermission = {

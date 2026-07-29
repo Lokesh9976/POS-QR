@@ -33,11 +33,13 @@ function SocketToastListener() {
     const handleCustomerRequest = (payload: { tableNo: string; type: string }) => {
       const user = useAuthStore.getState().user;
       if (user) {
-        toast.showToast({
-          message: `Table ${payload.tableNo} Request`,
-          subtitle: payload.type,
-          type: "info",
-          duration: 8000,
+        const { useNotificationStore } = require("../stores/notificationStore");
+        useNotificationStore.getState().addNotification({
+          title: `Table ${payload.tableNo} Request`,
+          message: payload.type,
+          type: "GENERAL",
+          tableNo: payload.tableNo,
+          section: "SECTION_1", // Default dining section fallback
         });
       }
     };
