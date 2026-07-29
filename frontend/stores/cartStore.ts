@@ -1382,7 +1382,7 @@ export const useCartStore = create<CartState>()(
             // Also, strictly filter out items that are currently in the Deletion Shield.
             const currentLocalCart = state.carts[resolvedContextId] || [];
             const localPendingItems = currentLocalCart.filter(item => {
-               const isPending = item.status === "NEW" || !item.status || item.status === "SENT";
+               const isPending = item.status === "NEW" || !item.status;
                return isPending;
             });
             

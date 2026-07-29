@@ -244,27 +244,20 @@ export function useGlobalSocketSync() {
 
     // --- 4. CART UPDATED ---
     const handleCartUpdated = (data: { tableId: string }) => {
+      const cleanTarget = String(data.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
       if (__DEV__) {
-        console.log("🛒 [Socket-Global] Cart updated (DB Sync) for Table:", data.tableId);
+        console.log("🛒 [Socket-Global] Cart updated (DB Sync) for Table:", cleanTarget);
       }
       const currentOrder = useOrderContextStore.getState().currentOrder;
-      if (data.tableId && data.tableId === currentOrder?.tableId) {
-        const cartStore = useCartStore.getState();
-        const contextId = cartStore.currentContextId;
-        if (contextId) {
-          const lastLocal = cartStore.lastLocalUpdate[contextId] || 0;
-          const lastSync = cartStore.lastServerSync[contextId] || 0;
-          if (lastLocal > 0 && lastSync >= lastLocal) {
-            if (__DEV__) {
-              console.log(`🛡️ [Socket-Global] Skipping redundant cart fetch for Table: ${data.tableId}. Local client is already synchronized.`);
-            }
-            return;
+      if (cleanTarget && currentOrder?.tableId) {
+        const cleanCurrent = String(currentOrder.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+        if (cleanTarget === cleanCurrent) {
+          if (__DEV__) {
+            console.log(`[Socket-Global] Active table cart updated on server. Forcing immediate fetch...`);
           }
+          fetchCartFromDB(currentOrder.tableId, true);
         }
-        // Lower priority than cart_change relay
-        throttledFetch(data.tableId, 2000); 
       }
-      // 🚀 Removed fetchActiveKitchenOrders() here to stop API spam on every single cart modification
     };
 
     // --- 5. ORDER STATUS (CLOSE/VOID) ---
