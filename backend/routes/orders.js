@@ -1022,7 +1022,16 @@ router.post("/send", async (req, res) => {
     await transaction.begin();
     try {
       // 1. 🚀 GENERATE PROFESSIONAL ID NOW (At the moment of sending)
+      // Also check if this table already had an active order (= additional order)
+      const preSendCheck = await pool.request()
+        .input('tid', sql.VarChar(50), cleanId)
+        .query('SELECT CurrentOrderId FROM TableMaster WHERE TableId = @tid');
+      const preSendOrderId = preSendCheck.recordset[0]?.CurrentOrderId;
+      const hadExistingOrder = !!(preSendOrderId && preSendOrderId !== 'NEW' && preSendOrderId !== '#NEW' && !preSendOrderId.startsWith('TEMP-') && preSendOrderId.length > 5);
+
       const finalOrderId = await getOrGenerateOrderId(req, cleanId);
+      // If the table already had this exact order ID before /send, it's an additional order
+      const isAdditionalOrder = hadExistingOrder && preSendOrderId === finalOrderId;
 
       // 2. FORCE SENT STATUS — use items from client, or fall back to DB items
       let clientItems = items || [];
@@ -1108,7 +1117,9 @@ router.post("/send", async (req, res) => {
 
       res.json({ success: true, orderId: finalOrderId });
 
-      // 🔥 REAL-TIME BROADCAST: Notify KDS and all other Waiter devices
+      // 🔥 REAL-TIME BROADCAST: Notify KDS screen, POS APK, and all waiter devices.
+      // The POS APK receives this event and prints directly via WiFi TCP to the kitchen printer.
+      // PrintJobQueue is NOT used here — the APK is always running and connected to printers directly.
       const io = req.app.get("io");
       if (io) {
         const tableQuery = await pool
@@ -1133,11 +1144,14 @@ router.post("/send", async (req, res) => {
 
         io.emit("new_order", {
           orderId: finalOrderId,
+          isAdditional: isAdditionalOrder,
           context: {
             orderType: "DINE_IN",
             tableId: cleanId,
             tableNo: tableNo,
             section: section,
+            entryStatus: isQROrder ? "q" : null,
+            paymentStatus: isQROrder ? 0 : null,
           },
           items: sentItems,
           createdAt: Date.now(),

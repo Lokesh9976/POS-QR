@@ -84,7 +84,8 @@ export default function CustomerCartScreen() {
   // Calculate service charge eligible subtotal (all dine-in items that are not takeaway)
   const scEligibleSubtotal = currentCart.reduce((sum, item) => {
     const isTakeaway = item.isTakeaway === true || String(item.isTakeaway) === "1" || String(item.isTakeaway).toLowerCase() === "true" || (item as any).IsTakeaway === true || String((item as any).IsTakeaway) === "1" || String((item as any).IsTakeaway).toLowerCase() === "true";
-    if (!isTakeaway) {
+    const isSC = !isTakeaway && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true || Number((item as any).IsServiceCharge) === 1 || (item as any).IsServiceCharge === true);
+    if (isSC) {
       return sum + (item.price || 0) * (item.qty || 0);
     }
     return sum;

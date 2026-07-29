@@ -454,7 +454,6 @@ private static escapeHtml(str: string): string {
                 <td class="item-name">
                     ${item.name || item.DishName || ''}
                     ${item.songName || item.SongName ? `<div style="font-size: 8.5px; color: #555; font-style: italic; margin-top: 0.5mm;">🎵 ${item.songName || item.SongName}</div>` : ''}
-                    ${(Number(item.isServiceCharge) === 1 || item.isServiceCharge === true) && !allItemsHaveSC ? `<div style="font-size: 8.5px; color: #555; font-style: italic; margin-top: 0.5mm;">[Service Charge ${company.serviceChargePercentage}%]</div>` : ''}
                     ${modifiersHTML}
                     ${comboSelectionsHTML}
                     ${(() => {

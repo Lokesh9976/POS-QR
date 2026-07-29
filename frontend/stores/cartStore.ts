@@ -1278,7 +1278,7 @@ export const useCartStore = create<CartState>()(
         if ((get() as any)._fetchTimeout) clearTimeout((get() as any)._fetchTimeout);
         const fetchStartTime = Date.now();
         
-        const timeout = setTimeout(async () => {
+        const doFetch = async () => {
           try {
             const now = Date.now();
             const state = get();
@@ -1481,9 +1481,14 @@ export const useCartStore = create<CartState>()(
           } catch (err) {
             console.error("❌ [CartStore] Fetch failed:", err);
           }
-        }, 100); // 🚀 FASTER FETCH: Reduced from 300ms
-        
-        set({ _fetchTimeout: timeout } as any);
+        };
+
+        if (force) {
+          await doFetch();
+        } else {
+          const timeout = setTimeout(doFetch, 100); // 🚀 FASTER FETCH: Reduced from 300ms
+          set({ _fetchTimeout: timeout } as any);
+        }
       },
       setTableOrderId: (tableId, orderId) => {
         const { tableOrderIds } = get();
@@ -1695,7 +1700,7 @@ export const updateCartItemFullGlobal = (
 export const voidCartItemGlobal = (lineItemId: string) =>
   useCartStore.getState().voidCartItem(lineItemId);
 
-export const fetchCartFromDBGlobal = (tableId: string) =>
-  useCartStore.getState().fetchCartFromDB(tableId);
+export const fetchCartFromDBGlobal = (tableId: string, force?: boolean) =>
+  useCartStore.getState().fetchCartFromDB(tableId, force);
 
 // 🚀 LIVE SYNC: Now handled globally via useGlobalSocketSync.ts

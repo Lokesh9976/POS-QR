@@ -868,12 +868,12 @@ class UniversalPrinter {
           .header-box { 
             background: #000 !important; 
             color: #fff !important; 
-            padding: 3px 8px; 
-            text-align: left; 
+            padding: 5px 8px; 
+            text-align: center; 
             font-weight: bold; 
             font-size: 24px; 
-            display: inline-block;
-            margin-bottom: 2px;
+            display: block;
+            margin-bottom: 4px;
             text-transform: uppercase;
             -webkit-print-color-adjust: exact;
           }
@@ -883,6 +883,7 @@ class UniversalPrinter {
             font-weight: bold;
             margin-bottom: 8px;
             color: #333;
+            text-align: center;
           }
           
           .table-info {
@@ -963,8 +964,9 @@ class UniversalPrinter {
             font-weight: bold;
             margin-top: 16px;
             text-transform: uppercase;
-            border: 2px solid #000;
-            padding: 6px;
+            border-top: 2px dashed #000;
+            border-bottom: 2px dashed #000;
+            padding: 8px 0;
           }
           
           @media print {
@@ -1124,7 +1126,7 @@ class UniversalPrinter {
             Order By : ${waiter} #OR-${orderNo}
           </div>
 
-          ${kitchenName && kitchenName !== "KDS" ? `<div class="kitchen-name">${kitchenName}</div>` : ""}
+          ${kitchenName && kitchenName !== "KDS" ? `<div class="kitchen-name">${kitchenName.toUpperCase()}${tableNo && tableNo !== "N/A" ? `  /  T.NO: ${tableNo}` : ""}</div>` : ""}
         </div>
       </body>
       </html>
@@ -1277,8 +1279,10 @@ class UniversalPrinter {
     text += `[L]Order #: ${orderNo}\n`;
 
     if (kitchenName && kitchenName !== "KDS") {
+      const bottomLabel = tableNo && tableNo !== "N/A" ? `${kitchenName.toUpperCase()}  /  T.NO: ${tableNo}` : kitchenName.toUpperCase();
       text += "[L]--------------------------------\n";
-      text += `[C]<font size='big'><B>${kitchenName.toUpperCase()}</B></font>\n`;
+      text += `[C]<font size='big'><B>${bottomLabel}</B></font>\n`;
+      text += "[L]--------------------------------\n";
     }
 
     text += "\n\n";
@@ -1698,12 +1702,6 @@ class UniversalPrinter {
       // If name was truncated, print full name on next line
       if ((item.name || "").length > 26) {
         text += `[L]   ${item.name}\n`;
-      }
-
-      const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
-      const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
-      if (isSC && !allItemsHaveSC) {
-        text += `[L]   [Service Charge ${company.serviceChargePercentage}%]\n`;
       }
 
       // Modifiers with positive pricing

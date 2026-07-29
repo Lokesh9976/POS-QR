@@ -433,12 +433,6 @@ class SunmiPrinterService {
           await SunmiModule.printText(formatter.left(`   ` + "🎵 " + songName));
         }
 
-        const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
-        const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true);
-        if (isSC && !allItemsHaveSC) {
-          await SunmiModule.printText(formatter.left(`    [Service Charge ${companySettings.serviceChargePercentage}%]`));
-        }
-
         if (item.modifiers && Array.isArray(item.modifiers)) {
           for (const m of item.modifiers) {
             const mName = (m.ModifierName || m.name || "").trim();

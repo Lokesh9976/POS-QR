@@ -1179,7 +1179,7 @@ export default function SummaryScreen() {
 
       const itemSubtotal = baseTotal - itemDiscount;
       const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway || (item as any).isTakeaway === true || (item as any).IsTakeaway === true || String((item as any).isTakeaway) === "1" || String((item as any).IsTakeaway) === "1";
-      const isSC = !isTakeawayItem;
+      const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true || Number(item.IsServiceCharge) === 1 || item.IsServiceCharge === true);
       const itemTWCharge = isTakeawayItem ? item.qty * takeawayCharges : 0;
 
       return {

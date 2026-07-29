@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { playNotificationSound } from "../utils/soundHelper";
+
 export type NotificationItem = {
   id: string;
   title: string;
@@ -24,18 +26,21 @@ type NotificationState = {
 export const useNotificationStore = create<NotificationState>((set) => ({
   notifications: [],
   unreadCount: 0,
-  addNotification: (notif) => set((state) => {
-    const newNotif: NotificationItem = {
-      ...notif,
-      id: Math.random().toString(36).substring(2, 9),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      read: false,
-    };
-    return {
-      notifications: [newNotif, ...state.notifications],
-      unreadCount: state.unreadCount + 1,
-    };
-  }),
+  addNotification: (notif) => {
+    playNotificationSound().catch(() => {});
+    set((state) => {
+      const newNotif: NotificationItem = {
+        ...notif,
+        id: Math.random().toString(36).substring(2, 9),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        read: false,
+      };
+      return {
+        notifications: [newNotif, ...state.notifications],
+        unreadCount: state.unreadCount + 1,
+      };
+    });
+  },
   removeNotification: (id) => set((state) => {
     const item = state.notifications.find((n) => n.id === id);
     const wasUnread = item ? !item.read : false;

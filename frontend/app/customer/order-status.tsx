@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  Pressable,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Theme } from "../../constants/theme";
@@ -722,7 +723,8 @@ export default function CustomerOrderStatusScreen() {
 
   const scEligibleSubtotal = activeCartItems.reduce((sum, item) => {
     const isTakeaway = item.isTakeaway === true || String(item.isTakeaway) === "1" || String(item.isTakeaway).toLowerCase() === "true" || (item as any).IsTakeaway === true || String((item as any).IsTakeaway) === "1" || String((item as any).IsTakeaway).toLowerCase() === "true";
-    if (!isTakeaway) {
+    const isSC = !isTakeaway && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true || Number((item as any).IsServiceCharge) === 1 || (item as any).IsServiceCharge === true);
+    if (isSC) {
       return sum + (item.price || 0) * (item.qty || 0);
     }
     return sum;
@@ -897,27 +899,62 @@ export default function CustomerOrderStatusScreen() {
         {/* Quick Customer Requests */}
         <Text style={styles.sectionTitle}>Request Service</Text>
         <View style={styles.requestsGrid}>
-          <TouchableOpacity style={styles.requestBtn} onPress={() => handleSendRequest("Call Waiter")}>
+          <Pressable
+            style={({ pressed, hovered }: any) => [
+              styles.requestBtn,
+              hovered && { backgroundColor: "#FFF8F2", borderColor: Theme.primary, elevation: 3 },
+              pressed && { backgroundColor: "#FFEFE0", transform: [{ scale: 0.96 }] }
+            ]}
+            onPress={() => handleSendRequest("Call Waiter")}
+          >
             <Ionicons name="notifications-outline" size={24} color={Theme.primary} />
             <Text style={styles.requestBtnText}>Call Waiter</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.requestBtn} onPress={() => handleSendRequest("Request Water")}>
+          </Pressable>
+          <Pressable
+            style={({ pressed, hovered }: any) => [
+              styles.requestBtn,
+              hovered && { backgroundColor: "#FFF8F2", borderColor: Theme.primary, elevation: 3 },
+              pressed && { backgroundColor: "#FFEFE0", transform: [{ scale: 0.96 }] }
+            ]}
+            onPress={() => handleSendRequest("Request Water")}
+          >
             <Ionicons name="water-outline" size={24} color={Theme.primary} />
             <Text style={styles.requestBtnText}>Water</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.requestBtn} onPress={() => handleSendRequest("Request Spoon/Fork")}>
+          </Pressable>
+          <Pressable
+            style={({ pressed, hovered }: any) => [
+              styles.requestBtn,
+              hovered && { backgroundColor: "#FFF8F2", borderColor: Theme.primary, elevation: 3 },
+              pressed && { backgroundColor: "#FFEFE0", transform: [{ scale: 0.96 }] }
+            ]}
+            onPress={() => handleSendRequest("Request Spoon/Fork")}
+          >
             <Ionicons name="restaurant-outline" size={24} color={Theme.primary} />
             <Text style={styles.requestBtnText}>Cutlery</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.requestBtn} onPress={() => handleSendRequest("Request Tissue")}>
+          </Pressable>
+          <Pressable
+            style={({ pressed, hovered }: any) => [
+              styles.requestBtn,
+              hovered && { backgroundColor: "#FFF8F2", borderColor: Theme.primary, elevation: 3 },
+              pressed && { backgroundColor: "#FFEFE0", transform: [{ scale: 0.96 }] }
+            ]}
+            onPress={() => handleSendRequest("Request Tissue")}
+          >
             <Ionicons name="document-text-outline" size={24} color={Theme.primary} />
             <Text style={styles.requestBtnText}>Tissue</Text>
-          </TouchableOpacity>
+          </Pressable>
           {allServed && (
-            <TouchableOpacity style={styles.requestBtn} onPress={() => handleSendRequest("Request Bill")}>
+            <Pressable
+              style={({ pressed, hovered }: any) => [
+                styles.requestBtn,
+                hovered && { backgroundColor: "#FFF8F2", borderColor: Theme.primary, elevation: 3 },
+                pressed && { backgroundColor: "#FFEFE0", transform: [{ scale: 0.96 }] }
+              ]}
+              onPress={() => handleSendRequest("Request Bill")}
+            >
               <Ionicons name="wallet-outline" size={24} color={Theme.primary} />
               <Text style={styles.requestBtnText}>Request Bill</Text>
-            </TouchableOpacity>
+            </Pressable>
           )}
 
         </View>
@@ -1431,6 +1468,8 @@ const styles = StyleSheet.create({
   requestBtn: {
     width: "31%",
     backgroundColor: "#fff",
+    borderWidth: 1.5,
+    borderColor: "#F1F5F9",
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",

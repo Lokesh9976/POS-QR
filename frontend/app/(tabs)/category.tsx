@@ -1280,7 +1280,7 @@ export default function Category() {
           setCurrentContext(contextId);
         }
         try {
-          await fetchCartFromDBGlobal(item.id);
+          await fetchCartFromDBGlobal(item.id, true);
         } catch (err) {
           console.error(
             "❌ [Category] Failed to fetch occupied table cart:",
@@ -1383,7 +1383,7 @@ export default function Category() {
 
     if (newContext.tableId) {
       try {
-        await fetchCartFromDBGlobal(newContext.tableId);
+        await fetchCartFromDBGlobal(newContext.tableId, true);
       } catch (err) {
         console.error("❌ [Category] Failed to fetch shared cart:", err);
       }
@@ -4313,9 +4313,15 @@ export default function Category() {
         visible={isNotifModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setIsNotifModalVisible(false)}
+        onRequestClose={() => {
+          useNotificationStore.getState().clearNotifications();
+          setIsNotifModalVisible(false);
+        }}
       >
-        <TouchableWithoutFeedback onPress={() => setIsNotifModalVisible(false)}>
+        <TouchableWithoutFeedback onPress={() => {
+          useNotificationStore.getState().clearNotifications();
+          setIsNotifModalVisible(false);
+        }}>
           <View style={{
             flex: 1,
             backgroundColor: "rgba(15, 23, 42, 0.3)",
@@ -4366,7 +4372,10 @@ export default function Category() {
                         </Text>
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity onPress={() => setIsNotifModalVisible(false)}>
+                    <TouchableOpacity onPress={() => {
+                      useNotificationStore.getState().clearNotifications();
+                      setIsNotifModalVisible(false);
+                    }}>
                       <Ionicons name="close" size={22} color="#64748B" />
                     </TouchableOpacity>
                   </View>

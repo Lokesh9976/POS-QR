@@ -35,8 +35,19 @@ export function useGlobalSocketSync() {
       if (__DEV__) {
         console.log(`🔌 [Socket-Global] CONNECTED: ${socket.id} | API: ${API_URL}`);
       }
+      // Re-fetch all active kitchen orders on reconnect to recover any missed socket events
       useActiveOrdersStore.getState().fetchActiveKitchenOrders();
     };
+
+    // 🔄 BACKGROUND SAFETY SYNC: Poll every 60 seconds as a fallback.
+    // Socket events are fire-and-forget — if an event was missed during a brief network blip
+    // (without a full disconnect/reconnect), this ensures the POS screen catches up within 60s.
+    const backgroundSyncInterval = setInterval(() => {
+      if (__DEV__) {
+        console.log('[BackgroundSync] Running periodic kitchen orders refresh...');
+      }
+      useActiveOrdersStore.getState().fetchActiveKitchenOrders();
+    }, 60 * 1000); // every 60 seconds
 
     // 🏓 KEEP-ALIVE: Ping the server every 4 minutes to prevent Railway from sleeping.
     // Railway free tier sleeps after ~30 mins of inactivity causing cold-start timeouts.
@@ -73,38 +84,34 @@ export function useGlobalSocketSync() {
         payload?.entryStatus === "q" ||
         payload?.context?.orderSource === "QR";
 
-      // Add notification for QR orders
+      // ✅ Notification for QR orders
       if (isQrOrder) {
-        const tableLabel = payload.context?.orderType === "TAKEAWAY" 
-          ? `Takeaway ${payload.context.takeawayNo || ""}` 
+        const tableLabel = payload.context?.orderType === "TAKEAWAY"
+          ? `Takeaway ${payload.context.takeawayNo || ""}`
           : `${payload.context?.section || ""} • Table ${payload.context?.tableNo || ""}`;
-        
+
         useNotificationStore.getState().addNotification({
           title: "New QR Order",
           message: `Order #${payload.orderId} submitted for ${tableLabel}`,
           type: "QR_ORDER",
           orderId: payload.orderId,
           tableNo: payload.context?.tableNo,
-          section: payload.context?.section
+          section: payload.context?.section,
         });
       }
 
-      const paymentStatus = payload?.context?.paymentStatus !== undefined
-        ? Number(payload.context.paymentStatus)
-        : payload?.paymentStatus !== undefined
-          ? Number(payload.paymentStatus)
-          : 0;
-
-      // Only print QR order KOT/KDS if it's already paid (paymentStatus === 1)
-      if (isQrOrder && paymentStatus === 1 && payload.items?.length > 0) {
+      // 🖨️ Print KOT/KDS for QR orders via the POS APK directly.
+      // The POS APK is always running and connected to printers via WiFi TCP —
+      // same path that POS staff orders use. Both QR and POS orders resolve
+      // printer IPs from PrintMaster, so no hardcoding needed.
+      if (isQrOrder && payload.items?.length > 0) {
         if (__DEV__) {
-          console.log("🖨️ [Socket-Global] QR order detected — triggering auto-print for:", payload.orderId);
+          console.log("🖨️ [Socket-Global] QR order — triggering KOT print:", payload.orderId);
         }
         const items = payload.items ?? [];
         const context = payload.context ?? {};
-        const isAdditional =
-          payload.isAdditional === true ||
-          items.some((i: any) => i.status === "SENT");
+        // isAdditional only if backend explicitly flags it (not based on item status)
+        const isAdditional = payload.isAdditional === true;
 
         UniversalPrinter.routeAndPrintOrderKOT(
           payload.orderId,
@@ -114,7 +121,7 @@ export function useGlobalSocketSync() {
           context.waiterName || context.userName || "QR Order",
         ).then((printed: boolean) => {
           if (__DEV__ && printed) {
-            console.log("✅ [Socket-Global] QR KOT printed for order:", payload.orderId);
+            console.log("✅ [Socket-Global] QR KOT printed:", payload.orderId);
           }
         }).catch((err: any) => {
           console.error("[Socket-Global] QR auto-print failed:", err);
@@ -419,6 +426,7 @@ export function useGlobalSocketSync() {
 
     return () => {
       clearInterval(keepAliveInterval);
+      clearInterval(backgroundSyncInterval);
       socket.off("connect", handleConnect);
       socket.off("connect_error", handleConnectError);
       socket.off("new_order", handleNewOrder);

@@ -14,7 +14,7 @@ import { useInstallPrompt, APP_VERSION } from "../hooks/useInstallPrompt";
 import { Theme } from "../constants/theme";
 
 export const InstallAppModal: React.FC = () => {
-  if (Platform.OS !== "web") return null;
+  return null; // Permanently disabled as requested by the user.
 
   const {
     isVisible,

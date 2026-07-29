@@ -233,6 +233,9 @@ router.post("/save-guest", async (req, res) => {
       UPDATE TableMaster
       SET CustomerName = @customerName,
           Pax = @pax,
+          Status = CASE WHEN Status = 0 THEN 1 ELSE Status END,
+          StartTime = CASE WHEN StartTime IS NULL THEN GETDATE() ELSE StartTime END,
+          entry_status = CASE WHEN entry_status IS NULL THEN 'q' ELSE entry_status END,
           ModifiedBy = @ModifiedBy,
           ModifiedOn = GETDATE()
       OUTPUT 
