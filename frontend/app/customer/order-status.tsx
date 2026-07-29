@@ -460,6 +460,74 @@ export default function CustomerOrderStatusScreen() {
     fetchMemberPromoDetails();
   }, []);
 
+  useEffect(() => {
+    if (orderContext?.tableId) {
+      // 🚀 FORCE FETCH: Bypasses Latency Shield since we navigate here immediately after placing an order
+      fetchCartFromDB(orderContext.tableId, true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!orderContext?.tableId) return;
+
+    const handleOrderClosed = (payload: { tableId?: string }) => {
+      const cleanTarget = String(payload.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
+      const cleanCurrent = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+      if (cleanTarget === cleanCurrent) {
+        setIsSettled(true);
+      }
+    };
+
+    const handleTableStatus = (payload: { tableId?: string; status?: number }) => {
+      const cleanTarget = String(payload.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
+      const cleanCurrent = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+      if (cleanTarget === cleanCurrent && payload.status === 0) {
+        setIsSettled(true);
+      }
+    };
+
+    const handleCartUpdated = (data: { tableId: string; source?: string }) => {
+      const cleanTarget = String(data.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
+      const cleanCurrent = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+      if (cleanTarget === cleanCurrent) {
+        // If another device placed the order, clear any local NEW items and fetch
+        if (data.source === "order_sent") {
+          const ctxId = useCartStore.getState().currentContextId;
+          if (ctxId) {
+            useCartStore.setState((state) => {
+              const existing = state.carts[ctxId] || [];
+              const clearedCart = existing.filter((item: any) => item.status && item.status !== "NEW");
+              const newQtyMap: Record<string, number> = {};
+              clearedCart.forEach((item: any) => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
+              return {
+                carts: { ...state.carts, [ctxId]: clearedCart },
+                cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+                lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
+              };
+            });
+          }
+          if (orderContext.tableId) {
+            fetchCartFromDB(orderContext.tableId, true);
+          }
+        } else {
+          if (orderContext.tableId) {
+            fetchCartFromDB(orderContext.tableId);
+          }
+        }
+      }
+    };
+
+    socket.on("order_closed", handleOrderClosed);
+    socket.on("table_status_updated", handleTableStatus);
+    socket.on("cart_updated", handleCartUpdated);
+
+    return () => {
+      socket.off("order_closed", handleOrderClosed);
+      socket.off("table_status_updated", handleTableStatus);
+      socket.off("cart_updated", handleCartUpdated);
+    };
+  }, [orderContext]);
+
   const showPromoAlert = (title: string, msg: string, type: "success" | "error" = "error") => {
     setPromoModal({ visible: true, title, message: msg, type });
   };
@@ -580,77 +648,6 @@ export default function CustomerOrderStatusScreen() {
       </View>
     );
   }
-
-
-
-  useEffect(() => {
-    if (orderContext?.tableId) {
-      // 🚀 FORCE FETCH: Bypasses Latency Shield since we navigate here immediately after placing an order
-      fetchCartFromDB(orderContext.tableId, true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!orderContext?.tableId) return;
-
-    const handleOrderClosed = (payload: { tableId?: string }) => {
-      const cleanTarget = String(payload.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
-      const cleanCurrent = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
-      if (cleanTarget === cleanCurrent) {
-        setIsSettled(true);
-      }
-    };
-
-    const handleTableStatus = (payload: { tableId?: string; status?: number }) => {
-      const cleanTarget = String(payload.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
-      const cleanCurrent = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
-      if (cleanTarget === cleanCurrent && payload.status === 0) {
-        setIsSettled(true);
-      }
-    };
-
-    const handleCartUpdated = (data: { tableId: string; source?: string }) => {
-      const cleanTarget = String(data.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
-      const cleanCurrent = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
-      if (cleanTarget === cleanCurrent) {
-        // If another device placed the order, clear any local NEW items and fetch
-        if (data.source === "order_sent") {
-          const ctxId = useCartStore.getState().currentContextId;
-          if (ctxId) {
-            useCartStore.setState((state) => {
-              const existing = state.carts[ctxId] || [];
-              const clearedCart = existing.filter((item: any) => item.status && item.status !== "NEW");
-              const newQtyMap: Record<string, number> = {};
-              clearedCart.forEach((item: any) => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
-              return {
-                carts: { ...state.carts, [ctxId]: clearedCart },
-                cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
-                lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
-              };
-            });
-          }
-          if (orderContext.tableId) {
-            fetchCartFromDB(orderContext.tableId, true);
-          }
-        } else {
-          if (orderContext.tableId) {
-            fetchCartFromDB(orderContext.tableId);
-          }
-        }
-      }
-    };
-
-    socket.on("order_closed", handleOrderClosed);
-    socket.on("table_status_updated", handleTableStatus);
-    socket.on("cart_updated", handleCartUpdated);
-
-    return () => {
-      socket.off("order_closed", handleOrderClosed);
-      socket.off("table_status_updated", handleTableStatus);
-      socket.off("cart_updated", handleCartUpdated);
-    };
-  }, [orderContext]);
-
   if (isSettled) {
     return (
       <View style={styles.settledContainer}>

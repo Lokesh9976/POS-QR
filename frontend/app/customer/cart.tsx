@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Animated,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Theme } from "../../constants/theme";
@@ -23,6 +24,17 @@ export default function CustomerCartScreen() {
   const { carts, currentContextId, updateCartItemQty, syncCartWithDB, checkoutOrder } = useCartStore();
   const orderContext = useOrderContextStore((state) => state.currentOrder);
   const settings = useCompanySettingsStore((state: any) => state.settings);
+  
+  // 🌟 Premium Micro-Animation refs & state
+  const [isAnimating, setIsAnimating] = useState(false);
+  const animButtonScale = useRef(new Animated.Value(1)).current;
+  const animTextOpacity = useRef(new Animated.Value(1)).current;
+  const animRocketScale = useRef(new Animated.Value(0)).current;
+  const animRocketY = useRef(new Animated.Value(40)).current; // starts below
+  const animShake = useRef(new Animated.Value(0)).current; // shakes left-right
+  const animSuccessOpacity = useRef(new Animated.Value(0)).current;
+  const animButtonColor = useRef(new Animated.Value(0)).current; // 0 = brand, 1 = emerald success
+  const animButtonWidth = useRef(new Animated.Value(1)).current; // 1 = full width, 0 = circular capsule
   
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -216,94 +228,202 @@ export default function CustomerCartScreen() {
       return;
     }
 
-    if (submitting) return;
-    setSubmitting(true);
+    if (submitting || isAnimating) return;
+    setIsAnimating(true);
 
-    try {
-      // 1. Call the send API to commit these items to the kitchen (marks them SENT and triggers KOT)
-      const sendResponse = await fetch(`${API_URL}/api/orders/send`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          tableId: orderContext.tableId,
-          orderType: "DINE_IN",
-          entryStatus: "q",
-          discountAmount: discountAmt,
-          discountRemarks: applyPromo && activePromoCode ? `Applied Promo Code: ${activePromoCode}` : null,
-          items: currentCart.map(item => ({
-            id: item.id,
-            lineItemId: item.lineItemId || item.id,
-            name: item.name,
-            qty: item.qty,
-            price: item.price,
-            modifiers: item.modifiers || [],
-            status: "SENT",
-            note: notes,
-            isCombo: item.isCombo,
-            comboSelections: item.comboSelections || [],
-          }))
-        })
-      });
+    // 🚀 START PREMIUM MICRO-ANIMATION SEQUENCE (ROCKET LAUNCH)
+    animButtonScale.setValue(1);
+    animTextOpacity.setValue(1);
+    animRocketScale.setValue(0);
+    animRocketY.setValue(40);
+    animShake.setValue(0);
+    animSuccessOpacity.setValue(0);
+    animButtonColor.setValue(0);
+    animButtonWidth.setValue(1);
 
-      if (sendResponse.ok) {
-        // Update local storage promo amount on successful send
-        if (applyPromo && activePromoCode) {
-          const updatedAmount = Math.max(0, activePromoAmount - discountAmt);
-          if (userInfo && typeof localStorage !== "undefined") {
-            const updatedUser = { 
-              ...userInfo, 
-              PromoCode: activePromoCode, 
-              PromoAmount: updatedAmount,
-              Promocode: activePromoCode,
-              Promoamount: updatedAmount 
-            };
-            localStorage.setItem("qr_pos_user", JSON.stringify(updatedUser));
-            setUserInfo(updatedUser);
+    const { Easing } = require("react-native");
+
+    Animated.sequence([
+      // 1. Press bounce down + start shrinking button width to circle (pill)
+      Animated.parallel([
+        Animated.timing(animButtonScale, {
+          toValue: 0.94,
+          duration: 150,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(animButtonWidth, {
+          toValue: 0, // Morph to circle
+          duration: 350,
+          easing: Easing.bezier(0.25, 1, 0.5, 1),
+          useNativeDriver: false,
+        }),
+      ]),
+      // 2. Snap back button scale while fading text out
+      Animated.parallel([
+        Animated.timing(animButtonScale, {
+          toValue: 1,
+          duration: 200,
+          easing: Easing.out(Easing.back(1.5)),
+          useNativeDriver: true,
+        }),
+        Animated.timing(animTextOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]),
+      // 3. Load Rocket: Slide rocket in from below and scale it up
+      Animated.parallel([
+        Animated.timing(animRocketScale, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.back(1.5)),
+          useNativeDriver: true,
+        }),
+        Animated.timing(animRocketY, {
+          toValue: 0,
+          duration: 300,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+      // 4. Engine Ignition Tremble: Shake rocket left/right rapidly
+      Animated.sequence([
+        Animated.timing(animShake, { toValue: 4, duration: 50, useNativeDriver: true }),
+        Animated.timing(animShake, { toValue: -4, duration: 50, useNativeDriver: true }),
+        Animated.timing(animShake, { toValue: 4, duration: 50, useNativeDriver: true }),
+        Animated.timing(animShake, { toValue: -4, duration: 50, useNativeDriver: true }),
+        Animated.timing(animShake, { toValue: 3, duration: 50, useNativeDriver: true }),
+        Animated.timing(animShake, { toValue: -3, duration: 50, useNativeDriver: true }),
+        Animated.timing(animShake, { toValue: 0, duration: 50, useNativeDriver: true }),
+      ]),
+      // 5. BLASTOFF! Rocket shoots straight up into space
+      Animated.parallel([
+        Animated.timing(animRocketY, {
+          toValue: -120, // Shoots straight out of button bounds
+          duration: 350,
+          easing: Easing.bezier(0.5, 0, 1, 1), // accelerating
+          useNativeDriver: true,
+        }),
+        Animated.timing(animRocketScale, {
+          toValue: 0.5, // Shrinks as it travels further away
+          duration: 350,
+          useNativeDriver: true,
+        }),
+      ]),
+      // 6. Morph button back to full width + transition color to green
+      Animated.parallel([
+        Animated.timing(animButtonWidth, {
+          toValue: 1, // Morph back to wide
+          duration: 500,
+          easing: Easing.bezier(0.25, 1, 0.5, 1),
+          useNativeDriver: false,
+        }),
+        Animated.timing(animButtonColor, {
+          toValue: 1, // Turn emerald green
+          duration: 500,
+          useNativeDriver: false,
+        }),
+      ]),
+      // 7. Confirmed pop state (spring zoom + fade)
+      Animated.timing(animSuccessOpacity, {
+        toValue: 1,
+        duration: 350,
+        easing: Easing.out(Easing.back(1.8)),
+        useNativeDriver: true,
+      }),
+      // Hold state for satisfying impact
+      Animated.delay(600),
+    ]).start(async () => {
+      setSubmitting(true);
+      try {
+        const sendResponse = await fetch(`${API_URL}/api/orders/send`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            tableId: orderContext.tableId,
+            orderType: "DINE_IN",
+            entryStatus: "q",
+            discountAmount: discountAmt,
+            discountRemarks: applyPromo && activePromoCode ? `Applied Promo Code: ${activePromoCode}` : null,
+            items: currentCart.map(item => ({
+              id: item.id,
+              lineItemId: item.lineItemId || item.id,
+              name: item.name,
+              qty: item.qty,
+              price: item.price,
+              modifiers: item.modifiers || [],
+              status: "SENT",
+              note: notes,
+              isCombo: item.isCombo,
+              comboSelections: item.comboSelections || [],
+            }))
+          })
+        });
+
+        if (sendResponse.ok) {
+          // Update local storage promo amount on successful send
+          if (applyPromo && activePromoCode) {
+            const updatedAmount = Math.max(0, activePromoAmount - discountAmt);
+            if (userInfo && typeof localStorage !== "undefined") {
+              const updatedUser = { 
+                ...userInfo, 
+                PromoCode: activePromoCode, 
+                PromoAmount: updatedAmount,
+                Promocode: activePromoCode,
+                Promoamount: updatedAmount 
+              };
+              localStorage.setItem("qr_pos_user", JSON.stringify(updatedUser));
+              setUserInfo(updatedUser);
+            }
+            if (appliedPromo) {
+              setAppliedPromo({ code: activePromoCode, amount: updatedAmount });
+            }
+            if (updatedAmount <= 0) {
+              setApplyPromo(false);
+            }
           }
-          if (appliedPromo) {
-            setAppliedPromo({ code: activePromoCode, amount: updatedAmount });
+
+          // ✅ IMMEDIATE CLEAR: Wipe all local "NEW" draft items right away
+          const ctxId = currentContextId;
+          if (ctxId) {
+            useCartStore.setState((state) => {
+              const existing = state.carts[ctxId] || [];
+              const clearedCart = existing.filter(item => item.status && item.status !== "NEW");
+              const newQtyMap: Record<string, number> = {};
+              clearedCart.forEach(item => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
+              return {
+                carts: { ...state.carts, [ctxId]: clearedCart },
+                cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+              };
+            });
           }
-          if (updatedAmount <= 0) {
-            setApplyPromo(false);
+
+          // Hydrate from DB to ensure state is synchronized with server
+          if (orderContext.tableId) {
+            await useCartStore.getState().fetchCartFromDB(orderContext.tableId, true);
           }
+          
+          // Reset animation triggers & show success modal
+          setIsAnimating(false);
+          setShowSuccessModal(true);
+        } else {
+          const errText = await sendResponse.text();
+          console.error("Kitchen Send Error:", errText);
+          Alert.alert("Order Failed", "Failed to send items to the kitchen. Please contact staff.");
+          setIsAnimating(false);
         }
-
-        // ✅ IMMEDIATE CLEAR: Wipe all local "NEW" draft items right away
-        // so the cart appears empty instantly for this customer AND for
-        // any other browser tab / customer on the same table context.
-        const ctxId = currentContextId;
-        if (ctxId) {
-          useCartStore.setState((state) => {
-            const existing = state.carts[ctxId] || [];
-            // Keep only SENT/SERVED/VOIDED items (from DB); remove draft NEW ones
-            const clearedCart = existing.filter(item => item.status && item.status !== "NEW");
-            const newQtyMap: Record<string, number> = {};
-            clearedCart.forEach(item => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
-            return {
-              carts: { ...state.carts, [ctxId]: clearedCart },
-              cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
-            };
-          });
-        }
-
-        // Hydrate from DB to ensure state is synchronized with server (forces bypass of Latency Shield)
-        await useCartStore.getState().fetchCartFromDB(orderContext.tableId, true);
-        
-        // Show beautiful custom modal
-        setShowSuccessModal(true);
-      } else {
-        const errText = await sendResponse.text();
-        console.error("Kitchen Send Error:", errText);
-        Alert.alert("Order Failed", "Failed to send items to the kitchen. Please contact staff.");
+      } catch (err) {
+        console.error("Error placing order:", err);
+        Alert.alert("Network Error", "Failed to contact order server. Please try again.");
+        setIsAnimating(false);
+      } finally {
+        setSubmitting(false);
       }
-    } catch (err) {
-      console.error("Error placing order:", err);
-      Alert.alert("Network Error", "Failed to contact order server. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -438,15 +558,61 @@ export default function CustomerCartScreen() {
 
       {/* Place Order Bar */}
       {currentCart.length > 0 && (
-        <View style={styles.checkoutBar}>
-          {submitting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <TouchableOpacity style={styles.orderBtn} onPress={handlePlaceOrder}>
-              <Text style={styles.orderBtnText}>Place Order • {currencySymbol}{grandTotal.toFixed(2)}</Text>
+        <Animated.View 
+          style={[
+            styles.checkoutBar, 
+            { 
+              transform: [{ scale: animButtonScale }],
+              backgroundColor: animButtonColor.interpolate({
+                inputRange: [0, 1],
+                outputRange: [Theme.primary, "#059669"], // Emerald success green
+              }),
+              width: animButtonWidth.interpolate({
+                inputRange: [0, 1],
+                outputRange: ["16%", "100%"], // Shrinks to small circle then grows back
+              }),
+              alignSelf: "center", // Keeps it centered as it morphs
+              borderRadius: animButtonWidth.interpolate({
+                inputRange: [0, 1],
+                outputRange: [28, 16], // Becomes fully circular when small
+              }),
+            }
+          ]}
+        >
+            <TouchableOpacity style={styles.orderBtn} onPress={handlePlaceOrder} disabled={isAnimating || submitting}>
+              {/* Default text state */}
+              <Animated.View style={[styles.btnTextContainer, { opacity: animTextOpacity }]}>
+                <Text style={styles.orderBtnText}>Place Order • {currencySymbol}{grandTotal.toFixed(2)}</Text>
+              </Animated.View>
+
+              {/* Animated Rocket Launch Capsule */}
+              <Animated.View
+                style={[
+                  styles.animatedItem,
+                  {
+                    transform: [
+                      { scale: animRocketScale },
+                      { translateY: animRocketY },
+                      { translateX: animShake },
+                      { rotate: "-45deg" }, // tilts the paper plane to point straight up
+                    ],
+                  },
+                ]}
+              >
+                <Ionicons name="paper-plane-outline" size={28} color="#FFF" />
+              </Animated.View>
+
+              {/* Confirmed / success state */}
+              <Animated.View style={[styles.successContainer, { opacity: animSuccessOpacity }]}>
+                {submitting ? (
+                  <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                ) : (
+                  <Ionicons name="checkmark-circle-outline" size={22} color="#FFF" style={{ marginRight: 8 }} />
+                )}
+                <Text style={styles.orderBtnText}>{submitting ? "Sending..." : "Confirmed!"}</Text>
+              </Animated.View>
             </TouchableOpacity>
-          )}
-        </View>
+        </Animated.View>
       )}
 
       {/* Beautiful Premium Custom Success Modal */}
@@ -654,6 +820,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 10,
     elevation: 4,
+    overflow: "hidden", // 🔑 CLIPS THE ROLL-OFF ANIMATION WITHIN BUTTON BOUNDS
   },
   orderBtn: {
     width: "100%",
@@ -727,5 +894,19 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  btnTextContainer: {
+    position: "absolute",
+    alignSelf: "center",
+  },
+  animatedItem: {
+    position: "absolute",
+    alignSelf: "center",
+  },
+  successContainer: {
+    position: "absolute",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

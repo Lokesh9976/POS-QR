@@ -291,15 +291,16 @@ export default function CustomerWelcomeScreen() {
       if (data.success) {
         setTransitioning(true);
         setTimeout(() => {
-          setTempUser({
+          const loggedInUser = {
             userName: data.user.userName,
             phone: data.user.phone,
             email: data.user.email,
             promoCode: data.user.Promocode,
             promoAmount: data.user.Promoamount,
-          });
+          };
+          setTempUser(loggedInUser);
           setTransitioning(false);
-          setShowPaxModal(true);
+          proceedToMenu(loggedInUser);
         }, 1000);
       } else {
         showPopup("Sign In Failed", data.message || "Invalid name or password.");
@@ -341,9 +342,10 @@ export default function CustomerWelcomeScreen() {
       if (data.success) {
         setTransitioning(true);
         setTimeout(() => {
-          setTempUser({ userName: regUsername.trim(), phone: regCountryCode + regPhone.trim(), email: regEmail.trim() });
+          const registeredUser = { userName: regUsername.trim(), phone: regCountryCode + regPhone.trim(), email: regEmail.trim() };
+          setTempUser(registeredUser);
           setTransitioning(false);
-          setShowPaxModal(true);
+          proceedToMenu(registeredUser);
         }, 1000);
       } else {
         showPopup("Registration Failed", data.message || "Registration failed. Please try again.");
@@ -358,9 +360,10 @@ export default function CustomerWelcomeScreen() {
   const handleGuest = () => {
     setTransitioning(true);
     setTimeout(() => {
-      setTempUser({ userName: "Guest", fullName: "Guest Customer" });
+      const guestUser = { userName: "Guest", fullName: "Guest Customer" };
+      setTempUser(guestUser);
       setTransitioning(false);
-      setShowPaxModal(true);
+      proceedToMenu(guestUser);
     }, 1000);
   };
 
@@ -683,94 +686,6 @@ export default function CustomerWelcomeScreen() {
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
-        </Modal>
-      )}
-
-      {/* Pax Selection Modal */}
-      {showPaxModal && (
-        <Modal transparent visible={showPaxModal} animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={styles.paxModalContent}>
-              <View style={styles.paxIconBadge}>
-                <Ionicons name="people-outline" size={32} color={C.orangePrimary} />
-              </View>
-              <Text style={styles.paxTitle}>Number of Guests</Text>
-              <Text style={styles.paxSubtitle}>Please select how many people are dining at your table</Text>
-
-              {/* Grid or rows of Pax options */}
-              <View style={styles.paxGrid}>
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
-                  <TouchableOpacity
-                    key={num}
-                    style={[
-                      styles.paxBadge,
-                      !isCustomPax && selectedPax === num && styles.paxBadgeActive,
-                    ]}
-                    onPress={() => {
-                      setIsCustomPax(false);
-                      setSelectedPax(num);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.paxBadgeText,
-                        !isCustomPax && selectedPax === num && styles.paxBadgeTextActive,
-                      ]}
-                    >
-                      {num}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <TouchableOpacity
-                style={[styles.customPaxToggle, isCustomPax && styles.customPaxToggleActive]}
-                onPress={() => setIsCustomPax(!isCustomPax)}
-              >
-                <Ionicons name="create-outline" size={16} color={isCustomPax ? "#FFFFFF" : C.orangePrimary} />
-                <Text style={[styles.customPaxToggleText, isCustomPax && styles.customPaxToggleTextActive]}>
-                  {isCustomPax ? "Use Quick Select" : "Enter Custom Number"}
-                </Text>
-              </TouchableOpacity>
-
-              {isCustomPax && (
-                <View style={styles.customPaxInputContainer}>
-                  <TextInput
-                    style={styles.customPaxInput}
-                    placeholder="Enter number of guests"
-                    placeholderTextColor={C.textPlaceholder}
-                    value={String(customPax)}
-                    onChangeText={(t) => setCustomPax(t.replace(/[^0-9]/g, ""))}
-                    keyboardType="number-pad"
-                    autoFocus
-                  />
-                </View>
-              )}
-
-              <TouchableOpacity
-                style={styles.paxConfirmBtn}
-                onPress={handlePaxConfirm}
-                disabled={savingGuest}
-              >
-                {savingGuest ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.paxConfirmText}>Confirm & Start Ordering</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.paxSkipBtn}
-                onPress={() => {
-                  setShowPaxModal(false);
-                  proceedToMenu(tempUser);
-                }}
-                disabled={savingGuest}
-              >
-                <Text style={styles.paxSkipText}>Skip for Now</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
         </Modal>
       )}
 
@@ -1388,146 +1303,5 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 14,
     color: C.textMuted,
-  },
-
-  // Pax Selection Pop-up styles
-  paxModalContent: {
-    width: "88%",
-    maxWidth: 360,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 28,
-    padding: 26,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.22,
-    shadowRadius: 22,
-    elevation: 12,
-  },
-  paxIconBadge: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: C.orangeTint,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  paxTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: C.textDark,
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  paxSubtitle: {
-    fontSize: 13,
-    color: C.textMuted,
-    textAlign: "center",
-    lineHeight: 18,
-    marginBottom: 20,
-    paddingHorizontal: 10,
-  },
-  paxGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: 10,
-    marginBottom: 18,
-    width: "100%",
-  },
-  paxBadge: {
-    width: 64,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  paxBadgeActive: {
-    backgroundColor: C.orangePrimary,
-    borderColor: C.orangePrimary,
-    shadowColor: C.orangePrimary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-  },
-  paxBadgeText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: C.textDark,
-  },
-  paxBadgeTextActive: {
-    color: "#FFFFFF",
-  },
-  customPaxToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: "#FFF5ED",
-    borderWidth: 1,
-    borderColor: C.orangeLight,
-    marginBottom: 18,
-    gap: 6,
-  },
-  customPaxToggleActive: {
-    backgroundColor: C.orangePrimary,
-    borderColor: C.orangePrimary,
-  },
-  customPaxToggleText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: C.orangePrimary,
-  },
-  customPaxToggleTextActive: {
-    color: "#FFFFFF",
-  },
-  customPaxInputContainer: {
-    width: "100%",
-    marginBottom: 18,
-  },
-  customPaxInput: {
-    height: 50,
-    backgroundColor: "#F8FAFC",
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: C.orangePrimary,
-    textAlign: "center",
-    fontSize: 17,
-    fontWeight: "800",
-    color: C.textDark,
-  },
-  paxConfirmBtn: {
-    width: "100%",
-    paddingVertical: 14,
-    alignItems: "center",
-    backgroundColor: C.orangePrimary,
-    borderRadius: 24,
-    shadowColor: C.orangePrimary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-  },
-  paxConfirmText: {
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-  paxSkipBtn: {
-    marginTop: 14,
-    paddingVertical: 10,
-    width: "100%",
-    alignItems: "center",
-  },
-  paxSkipText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: C.textMuted,
-    textDecorationLine: "underline",
   },
 });
