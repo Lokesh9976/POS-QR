@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -51,6 +51,40 @@ export default function CustomerCartScreen() {
       }
     }
   }, []);
+
+  // 🔄 REAL-TIME SYNC: If another person on the same table places an order while this
+  // customer is on the cart screen, clear local NEW items and re-fetch from the server
+  // so "Place Order" disappears and the cart reflects the confirmed order.
+  useEffect(() => {
+    if (!orderContext?.tableId) return;
+    const tableId = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+    const { socket: sharedSocket } = require("../../constants/socket");
+
+    const handleCartUpdated = (data: { tableId: string }) => {
+      const incomingId = String(data.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
+      if (incomingId === tableId) {
+        const ctxId = useCartStore.getState().currentContextId;
+        if (ctxId) {
+          useCartStore.setState((state) => {
+            const existing = state.carts[ctxId] || [];
+            const clearedCart = existing.filter((item: any) => item.status && item.status !== "NEW");
+            const newQtyMap: Record<string, number> = {};
+            clearedCart.forEach((item: any) => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
+            return {
+              carts: { ...state.carts, [ctxId]: clearedCart },
+              cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+              // Reset lastLocalUpdate so fetchCartFromDB merge doesn't re-add stale NEW items
+              lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
+            };
+          });
+        }
+        useCartStore.getState().fetchCartFromDB(orderContext.tableId!, true);
+      }
+    };
+
+    sharedSocket.on("cart_updated", handleCartUpdated);
+    return () => { sharedSocket.off("cart_updated", handleCartUpdated); };
+  }, [orderContext?.tableId]);
 
   const currentCart = (currentContextId ? carts[currentContextId] || [] : []).filter(item => item.status === "NEW" || !item.status);
   const totalItems = currentCart.reduce((sum, item) => sum + (item.qty || 0), 0);
@@ -231,9 +265,24 @@ export default function CustomerCartScreen() {
           }
         }
 
-        // Clear local unsent cart items and skip background save-cart to prevent race conditions
-        useCartStore.getState().markAllAsSent(true);
-        
+        // ✅ IMMEDIATE CLEAR: Wipe all local "NEW" draft items right away
+        // so the cart appears empty instantly for this customer AND for
+        // any other browser tab / customer on the same table context.
+        const ctxId = currentContextId;
+        if (ctxId) {
+          useCartStore.setState((state) => {
+            const existing = state.carts[ctxId] || [];
+            // Keep only SENT/SERVED/VOIDED items (from DB); remove draft NEW ones
+            const clearedCart = existing.filter(item => item.status && item.status !== "NEW");
+            const newQtyMap: Record<string, number> = {};
+            clearedCart.forEach(item => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
+            return {
+              carts: { ...state.carts, [ctxId]: clearedCart },
+              cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+            };
+          });
+        }
+
         // Hydrate from DB to ensure state is synchronized with server (forces bypass of Latency Shield)
         await useCartStore.getState().fetchCartFromDB(orderContext.tableId, true);
         

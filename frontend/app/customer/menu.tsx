@@ -530,6 +530,48 @@ export default function CustomerMenuScreen() {
     fetchMenu();
   }, []);
 
+  // 🔄 REAL-TIME SYNC: Listen for cart updates from backend (when another session places order)
+  useEffect(() => {
+    if (!orderContext?.tableId) return;
+    const tableId = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+
+    const { socket: sharedSocket } = require("../../constants/socket");
+
+    const handleCartUpdated = (data: { tableId: string }) => {
+      const incomingId = String(data.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
+      if (incomingId === tableId) {
+        // 🔄 FAST SYNC: Fully wipe local NEW drafts so the merge logic in fetchCartFromDB
+        // doesn't re-append them (which would leave the Place Order button visible on other devices).
+        const ctxId = useCartStore.getState().currentContextId;
+        if (ctxId) {
+          useCartStore.setState((state) => {
+            const existing = state.carts[ctxId] || [];
+            // Keep only server-confirmed items (SENT/READY/SERVED/HOLD/VOIDED)
+            const clearedCart = existing.filter((item: any) => item.status && item.status !== "NEW");
+            const newQtyMap: Record<string, number> = {};
+            clearedCart.forEach((item: any) => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
+            return {
+              carts: { ...state.carts, [ctxId]: clearedCart },
+              cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+              // 🔑 KEY FIX: Reset lastLocalUpdate to 0 so fetchCartFromDB's merge logic
+              // treats all local items as stale and won't re-add NEW drafts from other devices.
+              lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
+            };
+          });
+        }
+        // Force-fetch from DB (bypasses Latency Shield), and now that lastLocalUpdate is 0,
+        // the merge logic won't re-append local-only NEW items.
+        useCartStore.getState().fetchCartFromDB(orderContext.tableId!, true);
+      }
+    };
+
+    sharedSocket.on("cart_updated", handleCartUpdated);
+
+    return () => {
+      sharedSocket.off("cart_updated", handleCartUpdated);
+    };
+  }, [orderContext?.tableId]);
+
   const currentCart = (currentContextId ? carts[currentContextId] || [] : []).filter(item => item.status === "NEW" || !item.status);
   const totalItems = currentCart.reduce((sum, item) => sum + (item.qty || 0), 0);
   const subtotal = currentCart.reduce((sum, item) => sum + (item.price || 0) * (item.qty || 0), 0);
