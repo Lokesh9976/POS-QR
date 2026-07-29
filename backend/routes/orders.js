@@ -537,7 +537,7 @@ async function syncToProfessionalTables(
       String(item.isTakeAway).toLowerCase() === "true" ||
       String(item.IsTakeAway).toLowerCase() === "true";
 
-    const isSC = !isTWItem;
+    const isSC = !isTWItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true || Number(item.IsServiceCharge) === 1 || item.IsServiceCharge === true);
     let itemSC = null;
     if (isSC) {
       const qtyVal = Number(item.qty || 1);
