@@ -104,7 +104,8 @@ export function useGlobalSocketSync() {
       // The POS APK is always running and connected to printers via WiFi TCP —
       // same path that POS staff orders use. Both QR and POS orders resolve
       // printer IPs from PrintMaster, so no hardcoding needed.
-      if (isQrOrder && payload.items?.length > 0) {
+      const isCustomerSide = typeof window !== "undefined" && (window.location.pathname.includes("/customer") || window.location.href.includes("/customer"));
+      if (isQrOrder && payload.items?.length > 0 && !isCustomerSide) {
         if (__DEV__) {
           console.log("🖨️ [Socket-Global] QR order — triggering KOT print:", payload.orderId);
         }

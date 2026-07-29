@@ -1074,6 +1074,46 @@ router.post("/send", async (req, res) => {
           item.status === "VOIDED" || item.StatusCode === 0 ? "VOIDED" : "SENT",
       }));
 
+      // 2.5 Resolve kitchen details for each item to ensure correct KOT routing on the POS side
+      try {
+        const dishIds = sentItems.map(item => item.id).filter(id => !!id && id.length > 5);
+        if (dishIds.length > 0) {
+          const kitchenRes = await transaction.request()
+            .query(`
+              SELECT 
+                dish.DishId as id,
+                ISNULL(ckt.KitchenTypeCode, '2') as KitchenTypeCode, 
+                ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
+                pm.PrinterPath as PrinterIP
+              FROM DishMaster dish
+              LEFT JOIN DishGroupMaster dgm ON dish.DishGroupId = dgm.DishGroupId
+              LEFT JOIN CategoryMaster cat ON dgm.CategoryId = cat.CategoryId
+              LEFT JOIN CategoryKitchenType ckt ON dgm.CategoryId = ckt.CategoryId
+              LEFT JOIN (
+                SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
+                FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
+              ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
+              WHERE dish.DishId IN (${dishIds.map(id => `'${id}'`).join(",")})
+            `);
+          
+          const kitchenMap = {};
+          kitchenRes.recordset.forEach(row => {
+            kitchenMap[row.id.toLowerCase()] = row;
+          });
+
+          sentItems.forEach(item => {
+            const kInfo = kitchenMap[String(item.id).toLowerCase()];
+            if (kInfo) {
+              item.KitchenTypeCode = kInfo.KitchenTypeCode;
+              item.KitchenTypeName = kInfo.KitchenTypeName;
+              item.PrinterIP = kInfo.PrinterIP;
+            }
+          });
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to resolve kitchen info for sentItems:", err.message);
+      }
+
       // 3. FORCE SYNC with the new Professional ID
       await syncToProfessionalTables(
         transaction,
