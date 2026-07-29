@@ -60,25 +60,30 @@ export default function CustomerCartScreen() {
     const tableId = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
     const { socket: sharedSocket } = require("../../constants/socket");
 
-    const handleCartUpdated = (data: { tableId: string }) => {
+    const handleCartUpdated = (data: { tableId: string; source?: string }) => {
       const incomingId = String(data.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
       if (incomingId === tableId) {
-        const ctxId = useCartStore.getState().currentContextId;
-        if (ctxId) {
-          useCartStore.setState((state) => {
-            const existing = state.carts[ctxId] || [];
-            const clearedCart = existing.filter((item: any) => item.status && item.status !== "NEW");
-            const newQtyMap: Record<string, number> = {};
-            clearedCart.forEach((item: any) => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
-            return {
-              carts: { ...state.carts, [ctxId]: clearedCart },
-              cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
-              // Reset lastLocalUpdate so fetchCartFromDB merge doesn't re-add stale NEW items
-              lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
-            };
-          });
+        if (data.source === "order_sent") {
+          // 🔴 Another user placed an order: wipe local NEW drafts so Place Order button disappears
+          const ctxId = useCartStore.getState().currentContextId;
+          if (ctxId) {
+            useCartStore.setState((state) => {
+              const existing = state.carts[ctxId] || [];
+              const clearedCart = existing.filter((item: any) => item.status && item.status !== "NEW");
+              const newQtyMap: Record<string, number> = {};
+              clearedCart.forEach((item: any) => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
+              return {
+                carts: { ...state.carts, [ctxId]: clearedCart },
+                cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+                lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
+              };
+            });
+          }
+          useCartStore.getState().fetchCartFromDB(orderContext.tableId!, true);
+        } else {
+          // 🟡 Normal cart update (item added/edited): gentle fetch, keep local NEW items safe
+          useCartStore.getState().fetchCartFromDB(orderContext.tableId!);
         }
-        useCartStore.getState().fetchCartFromDB(orderContext.tableId!, true);
       }
     };
 

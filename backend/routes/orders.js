@@ -1199,6 +1199,7 @@ router.post("/send", async (req, res) => {
         io.emit("cart_updated", {
           tableId: cleanId.toLowerCase(),
           orderId: finalOrderId,
+          source: "order_sent", // 🔑 Allows QR frontend to distinguish order-placed vs item-added
         });
         io.emit("kot_printed", { tableId: cleanId, orderId: finalOrderId });
       }

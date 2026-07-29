@@ -537,31 +537,35 @@ export default function CustomerMenuScreen() {
 
     const { socket: sharedSocket } = require("../../constants/socket");
 
-    const handleCartUpdated = (data: { tableId: string }) => {
+    const handleCartUpdated = (data: { tableId: string; source?: string }) => {
       const incomingId = String(data.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
       if (incomingId === tableId) {
-        // 🔄 FAST SYNC: Fully wipe local NEW drafts so the merge logic in fetchCartFromDB
-        // doesn't re-append them (which would leave the Place Order button visible on other devices).
-        const ctxId = useCartStore.getState().currentContextId;
-        if (ctxId) {
-          useCartStore.setState((state) => {
-            const existing = state.carts[ctxId] || [];
-            // Keep only server-confirmed items (SENT/READY/SERVED/HOLD/VOIDED)
-            const clearedCart = existing.filter((item: any) => item.status && item.status !== "NEW");
-            const newQtyMap: Record<string, number> = {};
-            clearedCart.forEach((item: any) => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
-            return {
-              carts: { ...state.carts, [ctxId]: clearedCart },
-              cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
-              // 🔑 KEY FIX: Reset lastLocalUpdate to 0 so fetchCartFromDB's merge logic
-              // treats all local items as stale and won't re-add NEW drafts from other devices.
-              lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
-            };
-          });
+        if (data.source === "order_sent") {
+          // 🔴 ANOTHER USER PLACED AN ORDER: Aggressively wipe local NEW drafts so the
+          // merge logic in fetchCartFromDB won't re-add them (stops Place Order button staying visible).
+          const ctxId = useCartStore.getState().currentContextId;
+          if (ctxId) {
+            useCartStore.setState((state) => {
+              const existing = state.carts[ctxId] || [];
+              // Keep only server-confirmed items (SENT/READY/SERVED/HOLD/VOIDED)
+              const clearedCart = existing.filter((item: any) => item.status && item.status !== "NEW");
+              const newQtyMap: Record<string, number> = {};
+              clearedCart.forEach((item: any) => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
+              return {
+                carts: { ...state.carts, [ctxId]: clearedCart },
+                cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+                // Reset lastLocalUpdate so the merge logic treats local items as stale
+                lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
+              };
+            });
+          }
+          // Force-fetch bypasses Latency Shield; stale local items won't re-appear
+          useCartStore.getState().fetchCartFromDB(orderContext.tableId!, true);
+        } else {
+          // 🟡 NORMAL CART UPDATE (item added/edited by same or other user):
+          // Gentle fetch — respects local edits, no wipe. Latency Shield is active.
+          useCartStore.getState().fetchCartFromDB(orderContext.tableId!);
         }
-        // Force-fetch from DB (bypasses Latency Shield), and now that lastLocalUpdate is 0,
-        // the merge logic won't re-append local-only NEW items.
-        useCartStore.getState().fetchCartFromDB(orderContext.tableId!, true);
       }
     };
 
