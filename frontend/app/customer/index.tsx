@@ -392,10 +392,7 @@ export default function CustomerWelcomeScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
         {/* Top Header Bar */}
         <View style={styles.topBar}>
-          <TouchableOpacity activeOpacity={0.75} style={styles.backBtn} onPress={() => handleGuest()}>
-            <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
-            <Text style={styles.backBtnText}>Back</Text>
-          </TouchableOpacity>
+          <View style={{ width: 20 }} /> {/* spacer */}
 
           {scannedTable && (
             <View style={styles.tablePill}>

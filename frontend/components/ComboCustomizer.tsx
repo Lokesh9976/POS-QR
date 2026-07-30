@@ -334,10 +334,10 @@ export default function ComboCustomizer({
       const selectedIds = selections[group.comboGroupId] || [];
       // Defensive check: If the group has no options in database, skip minimum validation
       const effectiveMin =
-        group.options && group.options.length > 0 ? group.minSelection : 0;
+        group.options && group.options.length > 0 ? Math.min(group.minSelection, group.options.length) : 0;
       if (selectedIds.length < effectiveMin) {
         setError(
-          `Please pick at least ${group.minSelection} choice(s) for "${group.groupName}"`,
+          `Please pick at least ${effectiveMin} choice(s) for "${group.groupName}"`,
         );
         return;
       }

@@ -519,9 +519,9 @@ if (oldTableId && oldTableId !== tid) {
     // Validate minimum selections
     for (const group of comboConfig.groups) {
       const selectedIds = comboSelections[group.comboGroupId] || [];
-      const effectiveMin = group.options && group.options.length > 0 ? group.minSelection : 0;
+      const effectiveMin = group.options && group.options.length > 0 ? Math.min(group.minSelection, group.options.length) : 0;
       if (selectedIds.length < effectiveMin) {
-        setComboError(`Please pick at least ${group.minSelection} choice(s) for "${group.groupName}"`);
+        setComboError(`Please pick at least ${effectiveMin} choice(s) for "${group.groupName}"`);
         return;
       }
     }

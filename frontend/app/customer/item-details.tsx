@@ -117,11 +117,31 @@ export default function CustomerItemDetailsScreen() {
   };
 
   const handleToggleModifier = (mod: any) => {
+    const groupId = mod.ModifierGroupId;
+    const maxSel = Number(mod.MaxSelectionCount) || 1;
+    const isMulti = Number(mod.MultiselectAllow) === 1 && maxSel > 1;
+
     const isSelected = selectedModifiers.some((m) => m.ModifierID === mod.ModifierID);
+    
+    // Get currently selected modifiers belonging to the same group
+    const currentGroupSelections = selectedModifiers.filter((m) => m.ModifierGroupId === groupId);
+
     if (isSelected) {
+      // Always allow deselecting
       setSelectedModifiers(selectedModifiers.filter((m) => m.ModifierID !== mod.ModifierID));
     } else {
-      setSelectedModifiers([...selectedModifiers, mod]);
+      if (isMulti) {
+        // Multi-select limit check
+        if (currentGroupSelections.length < maxSel) {
+          setSelectedModifiers([...selectedModifiers, mod]);
+        } else {
+          Alert.alert("Selection Limit", `You can select up to ${maxSel} option(s) for "${mod.ModifierGroupName || "Modifiers"}".`);
+        }
+      } else {
+        // Single-select: Remove any other modifiers in this group, then add the new one
+        const otherGroupsMods = selectedModifiers.filter((m) => m.ModifierGroupId !== groupId);
+        setSelectedModifiers([...otherGroupsMods, mod]);
+      }
     }
   };
 
@@ -174,8 +194,9 @@ export default function CustomerItemDetailsScreen() {
 
       for (const group of comboConfig.groups) {
         const selectedIds = selections[group.comboGroupId] || [];
-        if (selectedIds.length < group.minSelection) {
-          Alert.alert("Selection Required", `Please select at least ${group.minSelection} option(s) for "${group.groupName}".`);
+        const effectiveMin = group.options && group.options.length > 0 ? Math.min(group.minSelection, group.options.length) : 0;
+        if (selectedIds.length < effectiveMin) {
+          Alert.alert("Selection Required", `Please select at least ${effectiveMin} option(s) for "${group.groupName}".`);
           return;
         }
       }
@@ -317,34 +338,54 @@ export default function CustomerItemDetailsScreen() {
         })}
 
         {/* Modifiers List */}
-        {Object.keys(groupedModifiers).map((groupName) => (
-          <View key={groupName} style={styles.modifierSection}>
-            <Text style={styles.sectionTitle}>{groupName}</Text>
-            {groupedModifiers[groupName].map((mod) => {
-              const isSelected = selectedModifiers.some((m) => m.ModifierID === mod.ModifierID);
-              return (
-                <TouchableOpacity
-                  key={mod.ModifierID}
-                  style={styles.modifierRow}
-                  onPress={() => handleToggleModifier(mod)}
-                >
-                  <View style={styles.rowLeft}>
-                    <Ionicons
-                      name={isSelected ? "checkbox" : "square-outline"}
-                      size={24}
-                      color={isSelected ? Theme.primary : "#94A3B8"}
-                      style={{ marginRight: 12 }}
-                    />
-                    <Text style={styles.modName}>{mod.ModifierName}</Text>
-                  </View>
-                  {Number(mod.Price) > 0 && (
-                    <Text style={styles.modPrice}>+${Number(mod.Price).toFixed(2)}</Text>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        ))}
+        {Object.keys(groupedModifiers).map((groupName) => {
+          const groupItems = groupedModifiers[groupName];
+          const firstMod = groupItems[0];
+          const minSel = firstMod ? Number(firstMod.MinSelectionCount || 0) : 0;
+          const maxSel = firstMod ? Number(firstMod.MaxSelectionCount || 1) : 1;
+          const isMulti = firstMod ? (Number(firstMod.MultiselectAllow) === 1 && maxSel > 1) : false;
+
+          return (
+            <View key={groupName} style={styles.modifierSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.sectionTitle, { paddingHorizontal: 0, paddingVertical: 0, borderBottomWidth: 0 }]}>{groupName}</Text>
+                <Text style={styles.selectionLimitsText}>
+                  {isMulti 
+                    ? `Select up to ${maxSel}` 
+                    : `Select 1`}
+                </Text>
+              </View>
+              
+              <View style={styles.comboGridContainer}>
+                {groupItems.map((mod) => {
+                  const isSelected = selectedModifiers.some((m) => m.ModifierID === mod.ModifierID);
+                  return (
+                    <TouchableOpacity
+                      key={mod.ModifierID}
+                      style={[styles.comboGridItem, isSelected && styles.comboGridItemActive]}
+                      onPress={() => handleToggleModifier(mod)}
+                    >
+                      <View style={styles.comboItemRow}>
+                        <Ionicons
+                          name={isSelected ? (isMulti ? "checkbox" : "radio-button-on") : (isMulti ? "square-outline" : "radio-button-off")}
+                          size={20}
+                          color={isSelected ? Theme.primary : "#94A3B8"}
+                          style={{ marginRight: 8 }}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.comboItemName} numberOfLines={2}>{mod.ModifierName}</Text>
+                          <Text style={[styles.comboItemSurcharge, { color: Number(mod.Price) > 0 ? Theme.primary : "#64748B" }]}>
+                            {Number(mod.Price) > 0 ? `+$${Number(mod.Price).toFixed(2)}` : "Included"}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          );
+        })}
       </ScrollView>
 
       {/* Footer checkout/quantity actions */}

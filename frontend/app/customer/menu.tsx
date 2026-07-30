@@ -388,7 +388,7 @@ const LogoutButtonWeb = ({ onConfirm }: { onConfirm: () => void }) => {
 
 export default function CustomerMenuScreen() {
   const router = useRouter();
-  const { kitchens, allDishes, fetchMenu, fetchGroups, isLoading } = useMenuStore();
+  const { kitchens, allDishes, fetchMenu, fetchGroups, modifierCache, isLoading } = useMenuStore();
   const { carts, currentContextId, addToCartGlobal } = useCartStore();
   const orderContext = useOrderContextStore((state) => state.currentOrder);
 
@@ -718,13 +718,33 @@ export default function CustomerMenuScreen() {
   });
 
   const handleAddSimple = (dish: any) => {
-    // If it has modifiers/combo selection, navigate to customizer screen
-    // For now we check if there are modifiers (we can load them or let item-details fetch)
-    // We navigate to details screen for customizer
-    router.push({
-      pathname: "/customer/item-details" as any,
-      params: { dishId: dish.DishId },
-    });
+    const isSoldOut = dish.IsSoldOut === true || String(dish.IsSoldOut) === "1" || dish.IsSoldOut === 1 || dish.isSoldOut === true || String(dish.isSoldOut) === "1" || dish.isSoldOut === 1;
+    if (isSoldOut) {
+      Alert.alert("Sold Out", `${dish.Name} is currently unavailable.`);
+      return;
+    }
+    const isCombo = dish.isCombo === true || String(dish.isCombo) === "1" || dish.isCombo === 1 || dish.IsCombo === true || String(dish.IsCombo) === "1" || dish.IsCombo === 1;
+    const modifiers = modifierCache[dish.DishId || dish.id] || [];
+    const hasModifiers = modifiers.length > 0 || Number(dish.HasModifiers) > 0;
+
+    if (isCombo || hasModifiers) {
+      router.push({
+        pathname: "/customer/item-details" as any,
+        params: { dishId: dish.DishId },
+      });
+    } else {
+      addToCartGlobal({
+        id: dish.DishId || dish.id,
+        name: dish.Name,
+        price: Number(dish.Price || 0),
+        basePrice: Number(dish.Price || 0),
+        isCombo: false,
+        comboSelections: [],
+        modifiers: [],
+        status: "NEW",
+      });
+      Alert.alert("Added to Cart", `${dish.Name} has been added to your cart.`);
+    }
   };
 
   const handleLogout = () => {
@@ -838,31 +858,43 @@ export default function CustomerMenuScreen() {
               <Text style={styles.emptyText}>No items found in this category.</Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <View style={styles.dishCard}>
-              <Image
-                source={{
-                  uri: item.Image
-                    ? `${API_URL}/api/menu/image/${item.Image}`
-                    : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=150",
-                }}
-                style={styles.dishImage}
-              />
-              <View style={styles.dishInfo}>
-                <Text style={styles.dishName}>{item.Name}</Text>
-                <Text style={styles.dishDescription} numberOfLines={2}>
-                  {item.Description || "Delicious traditional recipe crafted with fresh ingredients."}
-                </Text>
-                <View style={styles.cardFooter}>
-                  <Text style={styles.dishPrice}>${Number(item.Price || 0).toFixed(2)}</Text>
-                  <TouchableOpacity style={styles.addButton} onPress={() => handleAddSimple(item)}>
-                    <Text style={styles.addButtonText}>Customize</Text>
-                    <Ionicons name="add" size={16} color="#fff" />
-                  </TouchableOpacity>
+          renderItem={({ item }) => {
+            const isCombo = item.isCombo === true || String(item.isCombo) === "1" || item.isCombo === 1 || item.IsCombo === true || String(item.IsCombo) === "1" || item.IsCombo === 1;
+            const modifiers = modifierCache[item.DishId || item.id] || [];
+            const hasModifiers = modifiers.length > 0 || Number(item.HasModifiers) > 0;
+            const needsCustomization = isCombo || hasModifiers;
+            const isSoldOut = item.IsSoldOut === true || String(item.IsSoldOut) === "1" || item.IsSoldOut === 1 || item.isSoldOut === true || String(item.isSoldOut) === "1" || item.isSoldOut === 1;
+
+            return (
+              <View style={[styles.dishCard, isSoldOut && { opacity: 0.7 }]}>
+                <Image
+                  source={{
+                    uri: item.Image
+                      ? `${API_URL}/api/menu/image/${item.Image}`
+                      : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=150",
+                  }}
+                  style={styles.dishImage}
+                />
+                <View style={styles.dishInfo}>
+                  <Text style={styles.dishName}>{item.Name}</Text>
+                  <Text style={styles.dishDescription} numberOfLines={2}>
+                    {item.Description || "Delicious traditional recipe crafted with fresh ingredients."}
+                  </Text>
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.dishPrice}>${Number(item.Price || 0).toFixed(2)}</Text>
+                    <TouchableOpacity 
+                      style={[styles.addButton, isSoldOut && { backgroundColor: "#94A3B8" }]} 
+                      onPress={() => handleAddSimple(item)}
+                      disabled={isSoldOut}
+                    >
+                      <Text style={styles.addButtonText}>{isSoldOut ? "Sold Out" : (needsCustomization ? "Customize" : "Add")}</Text>
+                      {!isSoldOut && <Ionicons name="add" size={16} color="#fff" />}
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          )}
+            );
+          }}
         />
       )}
 
