@@ -834,7 +834,10 @@ class UniversalPrinter {
     title = title.replace(/\s*KOT\s*/gi, "").trim();
 
     const items = (data.items || []).filter((item: any) => (item.status || item.Status || "").toUpperCase() !== "VOIDED");
-    const tableNo = data.tableNo || "N/A";
+    const rawTableNo = data.tableNo || "N/A";
+    const tableNoVal = !isNaN(Number(rawTableNo)) && Number(rawTableNo) < 10 
+      ? String(rawTableNo).padStart(2, '0') 
+      : rawTableNo;
     const deviceNo = data.deviceNo || "1";
     const orderNo = data.orderNo || data.orderId || "N/A";
     const waiter = data.waiterName || "Staff";
@@ -981,7 +984,7 @@ class UniversalPrinter {
           <div class="timestamp">${timestamp}</div>
           
           <div class="table-info">
-            <span>Table:${tableNo}</span>
+            <span>TABLE NO : ${tableNoVal}</span>
           </div>
           
           <div class="headers">
@@ -1143,7 +1146,10 @@ class UniversalPrinter {
             ? "ADDITIONAL"
             : "NEW ORDER";
     const items = (data.items || []).filter((item: any) => (item.status || item.Status || "").toUpperCase() !== "VOIDED");
-    const tableNo = data.tableNo || "N/A";
+    const rawTableNo = data.tableNo || "N/A";
+    const tableNoVal = !isNaN(Number(rawTableNo)) && Number(rawTableNo) < 10 
+      ? String(rawTableNo).padStart(2, '0') 
+      : rawTableNo;
     const waiter = data.waiterName || "Staff";
     const orderNo = data.orderNo || data.orderId || "";
     const kitchenName = data.kitchenName || "";
@@ -1155,7 +1161,7 @@ class UniversalPrinter {
     text += "[L]--------------------------------\n";
 
     // 🏠 Big centered table number
-    text += `[C]<font size='big'>TABLE: ${tableNo}</font>\n`;
+    text += `[C]<font size='big'>TABLE NO : ${tableNoVal}</font>\n`;
     text += "[L]--------------------------------\n";
 
     text += "[L]QTY  ITEM\n";
