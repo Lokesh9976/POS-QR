@@ -833,7 +833,7 @@ class UniversalPrinter {
             : "NEW ORDER";
     title = title.replace(/\s*KOT\s*/gi, "").trim();
 
-    const items = data.items || [];
+    const items = (data.items || []).filter((item: any) => (item.status || item.Status || "").toUpperCase() !== "VOIDED");
     const tableNo = data.tableNo || "N/A";
     const deviceNo = data.deviceNo || "1";
     const orderNo = data.orderNo || data.orderId || "N/A";
@@ -1142,7 +1142,7 @@ class UniversalPrinter {
           : type === "ADDITIONAL"
             ? "ADDITIONAL"
             : "NEW ORDER";
-    const items = data.items || [];
+    const items = (data.items || []).filter((item: any) => (item.status || item.Status || "").toUpperCase() !== "VOIDED");
     const tableNo = data.tableNo || "N/A";
     const waiter = data.waiterName || "Staff";
     const orderNo = data.orderNo || data.orderId || "";

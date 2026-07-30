@@ -1447,6 +1447,10 @@ export const useCartStore = create<CartState>()(
               const existsOnServer = filteredDbItems.some((dbItem: CartItem) => {
                 if (dbItem.lineItemId === localItem.lineItemId) return true;
                 if (dbItem.id === localItem.id && getModifierKey(dbItem.modifiers) === getModifierKey(localItem.modifiers)) {
+                  const dbStatus = dbItem.status || "NEW";
+                  const localStatus = localItem.status || "NEW";
+                  if (dbStatus !== localStatus) return false;
+                  
                   if (isOpenPriceItem(dbItem) || isOpenPriceItem(localItem)) {
                     return dbItem.price === localItem.price;
                   }
@@ -1503,6 +1507,7 @@ export const useCartStore = create<CartState>()(
       checkoutOrder: async (tableId) => {
         try {
           if (__DEV__) console.log(`🚀 [CartStore] Initiating Checkout for Table: ${tableId}`);
+          if ((get() as any)._fetchTimeout) clearTimeout((get() as any)._fetchTimeout);
           const token = useAuthStore.getState().token;
           const response = await fetchWithRetry(`${API_URL}/api/orders/checkout`, {
             method: "POST",

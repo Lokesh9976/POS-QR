@@ -381,8 +381,8 @@ export default function KDSScreen() {
       // Add items that are not SERVED or are recently READY
       order.items.forEach((i: any) => {
         let shouldShow = false;
-        // 🚀 SHOW ONLY SENT or VOIDED ACTIVE STATUSES (Exclude NEW / drafts)
-        if (i.status === "SENT" || i.status === "VOIDED") shouldShow = true;
+        // 🚀 SHOW ONLY SENT (Exclude NEW / drafts and VOIDED/cancelled items)
+        if (i.status === "SENT") shouldShow = true;
         if (i.status === "READY" && i.readyAt) {
           shouldShow = (time - i.readyAt < 60000); // Stay for 60 seconds (extended)
         }
@@ -418,6 +418,7 @@ export default function KDSScreen() {
       .map(group => {
         const itemGroups: Record<string, OrderItem[]> = {};
         group.items.forEach((i: any) => {
+          if (i.status === "VOIDED") return; // ✂️ Skip voided/cancelled items — don't show on KDS
           const cat = (i.KitchenTypeName || i.kitchenTypeName || i.dishGroupName || i.categoryName || "KITCHEN").toUpperCase();
           if (!itemGroups[cat]) itemGroups[cat] = [];
           itemGroups[cat].push(i);

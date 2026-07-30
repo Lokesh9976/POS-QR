@@ -49,7 +49,7 @@ const normalizeKitchenItem = (item: any) => {
       : [];
 
   let comboSelections = undefined;
-  const comboJson = item?.ComboDetailsJSON ?? item?.comboDetailsJSON;
+  const comboJson = item?.ComboDetailsJSON ?? item?.comboDetailsJSON ?? item?.comboSelections;
   if (comboJson) {
     try {
       const parsed = typeof comboJson === "string" ? JSON.parse(comboJson) : comboJson;

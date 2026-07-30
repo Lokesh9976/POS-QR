@@ -474,6 +474,62 @@ const styles = StyleSheet.create({
 });
 
 
+const getStatusBadgeInfo = (item: any, isVoided: boolean, isSent: boolean) => {
+  if (isVoided) {
+    return {
+      text: "VOIDED",
+      bgColor: Theme.danger + "10",
+      borderColor: Theme.danger + "30",
+      textColor: Theme.danger,
+    };
+  }
+
+  const status = item.status || "NEW";
+  switch (status) {
+    case "SERVED":
+      return {
+        text: "SERVED",
+        bgColor: "#10B98115",
+        borderColor: "#10B98130",
+        textColor: "#10B981",
+      };
+    case "READY":
+      return {
+        text: "READY",
+        bgColor: "#3B82F615",
+        borderColor: "#3B82F630",
+        textColor: "#3B82F6",
+      };
+    case "HOLD":
+      return {
+        text: "HOLD",
+        bgColor: "#64748B15",
+        borderColor: "#64748B30",
+        textColor: "#64748B",
+      };
+    case "SENT":
+      return {
+        text: "SENT",
+        bgColor: "#22C55E15",
+        borderColor: "#22C55E30",
+        textColor: "#15803D",
+      };
+    case "NEW":
+    default:
+      return isSent ? {
+        text: "SENT",
+        bgColor: "#22C55E15",
+        borderColor: "#22C55E30",
+        textColor: "#15803D",
+      } : {
+        text: "NEW",
+        bgColor: "#3B82F615",
+        borderColor: "#3B82F630",
+        textColor: "#1D4ED8",
+      };
+  }
+};
+
 // 🟢 MEMOIZED CART ITEM COMPONENT: Stays outside to prevent re-creation
 const CartItemRow = React.memo(
   ({
@@ -497,6 +553,8 @@ const CartItemRow = React.memo(
 
     const isTakeawayItem = item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway;
     const isSC = !isTakeawayItem && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true) && useGeneralSettingsStore.getState().settings.SVCIdentification !== false;
+
+    const badge = getStatusBadgeInfo(item, isVoided, isSent);
 
     return (
       <View style={[
@@ -613,16 +671,8 @@ const CartItemRow = React.memo(
                 style={[
                   styles.statusTag,
                   {
-                    backgroundColor: isVoided
-                      ? Theme.danger + "10"
-                      : isSent
-                        ? "#22C55E15"
-                        : "#3B82F615",
-                    borderColor: isVoided
-                      ? Theme.danger + "30"
-                      : isSent
-                        ? "#22C55E30"
-                        : "#3B82F630",
+                    backgroundColor: badge.bgColor,
+                    borderColor: badge.borderColor,
                     paddingVertical: isPhone ? 2 : 4,
                   },
                 ]}
@@ -632,15 +682,11 @@ const CartItemRow = React.memo(
                     styles.statusTagText,
                     {
                       fontSize: isPhone ? 8 : 9,
-                      color: isVoided
-                        ? Theme.danger
-                        : isSent
-                          ? "#15803D"
-                          : "#1D4ED8",
+                      color: badge.textColor,
                     },
                   ]}
                 >
-                  {isVoided ? "VOIDED" : isSent ? "SENT" : "NEW"}
+                  {badge.text}
                 </Text>
               </View>
             </View>

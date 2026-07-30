@@ -19,6 +19,7 @@ import { Theme } from "../../constants/theme";
 import { useCartStore } from "../../stores/cartStore";
 import { useOrderContextStore } from "../../stores/orderContextStore";
 import { useCompanySettingsStore } from "../../stores/companySettingsStore";
+import { useGeneralSettingsStore } from "../../stores/generalSettingsStore";
 import { socket } from "../../constants/socket";
 import { Ionicons } from "@expo/vector-icons";
 import { API_URL } from "../../constants/Config";
@@ -387,8 +388,9 @@ export default function CustomerOrderStatusScreen() {
   const { carts, currentContextId, fetchCartFromDB, checkoutOrder } = useCartStore();
   const orderContext = useOrderContextStore((state) => state.currentOrder);
   const settings = useCompanySettingsStore((state: any) => state.settings);
+  const generalSettings = useGeneralSettingsStore((state: any) => state.settings);
   const currencySymbol = settings?.currencySymbol ?? settings?.CurrencySymbol ?? "$";
-  const enableOnlinePayment = settings?.enableOnlinePayment !== false && settings?.EnableOnlinePayment !== false;
+  const enableOnlinePayment = generalSettings?.enableOnlinePayment !== false && generalSettings?.EnableOnlinePayment !== false;
 
   const currentCart = currentContextId ? carts[currentContextId] || [] : [];
   const activeItems = currentCart.filter((item) => item.status && item.status !== "VOIDED");
@@ -417,6 +419,7 @@ export default function CustomerOrderStatusScreen() {
   const [paymentSent, setPaymentSent] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"cashier" | "online" | null>(null);
   const [onlineStep, setOnlineStep] = useState<"summary" | "qr">("summary");
+  const [isProcessingCashier, setIsProcessingCashier] = useState(false);
 
   const [promoInput, setPromoInput] = useState("");
   const [promoError, setPromoError] = useState("");
@@ -458,6 +461,7 @@ export default function CustomerOrderStatusScreen() {
 
   useEffect(() => {
     fetchMemberPromoDetails();
+    useGeneralSettingsStore.getState().fetchSettings?.().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -718,14 +722,21 @@ export default function CustomerOrderStatusScreen() {
 
   const handlePayAtCashier = async () => {
     if (!orderContext?.tableId || !orderContext?.tableNo) return;
+    setIsProcessingCashier(true);
+    
     try {
       await checkoutOrder(orderContext.tableId);
     } catch (err) {
       console.error("Checkout error:", err);
     }
+    
     executeSendRequest("Request Bill");
-    setPaymentMethod("cashier");
-    setPaymentSent(true);
+    
+    setTimeout(() => {
+      setIsProcessingCashier(false);
+      setPaymentMethod("cashier");
+      setPaymentSent(true);
+    }, 1800);
   };
 
   // Active items and totals for Online Payment summary
@@ -1075,7 +1086,13 @@ export default function CustomerOrderStatusScreen() {
       {showPaymentModal && (
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxWidth: 380 }]}>
-            {!paymentSent ? (
+            {isProcessingCashier ? (
+              <View style={{ alignItems: "center", paddingVertical: 32, width: "100%" }}>
+                <ActivityIndicator size="large" color={Theme.primary} style={{ marginBottom: 20 }} />
+                <Text style={{ fontSize: 18, fontWeight: "800", color: "#0F172A", marginBottom: 8, textAlign: "center" }}>Notifying Cashier...</Text>
+                <Text style={{ fontSize: 13, color: "#64748B", textAlign: "center", lineHeight: 18, paddingHorizontal: 16 }}>Sending request to the service team. Please wait a moment...</Text>
+              </View>
+            ) : !paymentSent ? (
               <>
                 <View style={styles.iconContainer}>
                   <Ionicons name="card-outline" size={32} color={Theme.primary} />
@@ -1084,7 +1101,13 @@ export default function CustomerOrderStatusScreen() {
                 <Text style={styles.modalSubtitle}>How would you like to pay?</Text>
 
                 {/* Pay at Cashier */}
-                <TouchableOpacity style={styles.payOptionBtn} onPress={handlePayAtCashier}>
+                <Pressable
+                  style={({ pressed, hovered }: any) => [
+                    styles.payOptionBtn,
+                    (hovered || pressed) && { backgroundColor: "#FFF8F2", borderColor: Theme.primary, elevation: 3 }
+                  ]}
+                  onPress={handlePayAtCashier}
+                >
                   <View style={styles.payOptionIcon}>
                     <Ionicons name="storefront-outline" size={28} color={Theme.primary} />
                   </View>
@@ -1093,11 +1116,17 @@ export default function CustomerOrderStatusScreen() {
                     <Text style={styles.payOptionDesc}>Staff will be notified to come to your table</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                </TouchableOpacity>
+                </Pressable>
 
                 {/* Online Payment (Only rendered when enableOnlinePayment setting is ON) */}
                 {enableOnlinePayment && (
-                  <TouchableOpacity style={styles.payOptionBtn} onPress={handleOnlinePayment}>
+                  <Pressable
+                    style={({ pressed, hovered }: any) => [
+                      styles.payOptionBtn,
+                      (hovered || pressed) && { backgroundColor: "#FFF8F2", borderColor: Theme.primary, elevation: 3 }
+                    ]}
+                    onPress={handleOnlinePayment}
+                  >
                     <View style={styles.payOptionIcon}>
                       <Ionicons name="qr-code-outline" size={28} color="#8B5CF6" />
                     </View>
@@ -1106,7 +1135,7 @@ export default function CustomerOrderStatusScreen() {
                       <Text style={styles.payOptionDesc}>Pay via PayNow / QR code</Text>
                     </View>
                     <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                  </TouchableOpacity>
+                  </Pressable>
                 )}
 
                 <TouchableOpacity
@@ -1307,13 +1336,6 @@ export default function CustomerOrderStatusScreen() {
                   onPress={() => setOnlineStep("summary")}
                 >
                   <Text style={styles.cancelBtnText}>Back to Bill Summary</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.confirmBtn, { width: "100%", marginTop: 8 }]}
-                  onPress={() => { setShowPaymentModal(false); setPaymentSent(false); setPaymentMethod(null); }}
-                >
-                  <Text style={styles.confirmBtnText}>Done</Text>
                 </TouchableOpacity>
               </View>
             )}

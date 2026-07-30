@@ -140,7 +140,7 @@ async function getOrGenerateOrderId(req, tableId) {
           `SELECT (COUNT(*) + 1) as LastNumber FROM RestaurantOrderCur WHERE OrderNumber LIKE '${datePrefix}%'`,
         );
       const emergencySeq = countRes.recordset[0]?.LastNumber || 1;
-      return `${datePrefix}-EM${String(emergencySeq).padStart(3, "0")}`;
+      return `${datePrefix}-${String(emergencySeq).padStart(4, "0")}`;
     }
   }
 
@@ -152,26 +152,9 @@ async function getOrGenerateOrderId(req, tableId) {
   try {
     // 1. GHOST CLEANUP: Force close any stale open orders for this table first
     // 🛡️ Fail-safe: Wrap in nested try to prevent crashing if DB is busy
-    try {
-      await pool.request().input("tid", sql.UniqueIdentifier, cleanId).query(`
-          DECLARE @TableNo VARCHAR(20), @CurrentOID NVARCHAR(50);
-          SELECT @TableNo = TableNumber, @CurrentOID = CurrentOrderId FROM TableMaster WHERE TableId = @tid;
-
-          IF @TableNo IS NOT NULL
-          BEGIN
-            UPDATE RestaurantOrderCur 
-            SET isOrderClosed = 1, ModifiedOn = GETDATE() 
-            WHERE Tableno = @TableNo 
-            AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
-            AND (OrderNumber <> @CurrentOID OR @CurrentOID IS NULL);
-          END
-        `);
-    } catch (cleanupErr) {
-      console.warn(
-        "⚠️ [Cart] Ghost cleanup non-critical failure:",
-        cleanupErr.message,
-      );
-    }
+    // NOTE: Pre-emptive ghost cleanup removed — it was closing active orders when CurrentOrderId
+    // was null or mismatched (e.g. after a QR order created a new ID). Ghost cleanup is now
+    // handled safely by syncToProfessionalTables Ghost Shield v2 (with item migration).
 
     // 2. Instant check for existing ID
     const quickCheck = await pool
@@ -197,7 +180,39 @@ async function getOrGenerateOrderId(req, tableId) {
         console.log(`✅ [Cart] Reusing existing active OrderID: ${existingId}`);
         return existingId;
       }
-      console.log(`⚠️ [Cart] Stale closed OrderID detected: ${existingId}. Generating new sequence.`);
+      console.log(`⚠️ [Cart] Stale closed OrderID detected: ${existingId}. Checking RestaurantOrderCur for active order...`);
+    }
+
+    // 🚀 CRITICAL FIX: Before generating a brand new sequence number, check if there is
+    // an ACTIVE open order already in RestaurantOrderCur for this table.
+    // This prevents EM031 vs 0024 split-brain when a QR order exists but TableMaster.CurrentOrderId
+    // was reset or shows a stale/different value.
+    try {
+      const activeOrderCheck = await pool.request()
+        .input('tidForCheck', sql.UniqueIdentifier, cleanId)
+        .query(`
+          SELECT TOP 1 h.OrderNumber
+          FROM RestaurantOrderCur h
+          JOIN TableMaster tm ON h.Tableno = tm.TableNumber
+          WHERE tm.TableId = @tidForCheck
+            AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
+            AND h.OrderNumber IS NOT NULL
+            AND h.OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '')
+            AND h.OrderNumber NOT LIKE 'TEMP-%'
+          ORDER BY h.CreatedOn DESC
+        `);
+      const activeOrderNo = activeOrderCheck.recordset[0]?.OrderNumber;
+      if (activeOrderNo && activeOrderNo.length > 5) {
+        console.log(`✅ [Cart] Found active DB order for table, reusing OrderNumber: ${activeOrderNo}`);
+        // Also sync TableMaster to reflect this order so future calls are consistent
+        await pool.request()
+          .input('tid2', sql.VarChar(50), cleanId)
+          .input('oid2', sql.NVarChar(50), activeOrderNo)
+          .query(`UPDATE TableMaster SET CurrentOrderId = @oid2, StartTime = ISNULL(StartTime, GETDATE()) WHERE TableId = @tid2`);
+        return activeOrderNo;
+      }
+    } catch (activeCheckErr) {
+      console.warn('⚠️ [Cart] Active order DB check failed (non-critical):', activeCheckErr.message);
     }
 
     const activeOrg = await getActiveOrganization();
@@ -247,7 +262,7 @@ async function getOrGenerateOrderId(req, tableId) {
         `SELECT (COUNT(*) + 1) as LastNumber FROM RestaurantOrderCur WHERE OrderNumber LIKE '${datePrefix}%'`,
       );
     const emergencySeq = countRes.recordset[0]?.LastNumber || 1;
-    return `${datePrefix}-EM${String(emergencySeq).padStart(3, "0")}`;
+    return `${datePrefix}-${String(emergencySeq).padStart(4, "0")}`;
   }
 }
 
@@ -382,18 +397,67 @@ async function syncToProfessionalTables(
       );
   }
 
-  // 🛡️ GHOST SHIELD: Force-close any OTHER open orders for the same table number to prevent "popping" items.
+  // 🛡️ GHOST SHIELD v2: Migrate SENT/READY items from orphaned open orders to the definitive order,
+  // then close the orphaned orders. This prevents item loss when split-brain orders exist.
   if (actualTableNo && actualTableNo !== "undefined") {
-    await transaction
+    // Step 1: Find all other open orders for this table (ghost orders)
+    const ghostOrdersRes = await transaction
       .request()
       .input("orderGuid", sql.UniqueIdentifier, orderGuid)
-      .input("tableNo", sql.VarChar(20), actualTableNo).query(`
-        UPDATE RestaurantOrderCur 
-        SET isOrderClosed = 1, ModifiedOn = GETDATE() 
-        WHERE Tableno = @tableNo 
-        AND (isOrderClosed = 0 OR isOrderClosed IS NULL) 
-        AND OrderId <> @orderGuid
+      .input("tableNo", sql.VarChar(20), actualTableNo)
+      .query(`
+        SELECT OrderId, OrderNumber
+        FROM RestaurantOrderCur
+        WHERE Tableno = @tableNo
+          AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+          AND OrderId <> @orderGuid
       `);
+
+    if (ghostOrdersRes.recordset.length > 0) {
+      for (const ghost of ghostOrdersRes.recordset) {
+        console.log(`🔀 [GhostShield] Migrating items from ghost order ${ghost.OrderNumber} → definitive ${cleanOrderNo}`);
+        // Step 2: Migrate all items from ghost → definitive order (avoid duplicating items already present)
+        await transaction
+          .request()
+          .input("destOrderId", sql.UniqueIdentifier, orderGuid)
+          .input("destOrderNo", sql.NVarChar(50), cleanOrderNo)
+          .input("srcOrderId", sql.UniqueIdentifier, ghost.OrderId)
+          .query(`
+            -- Move items that don't already exist in the destination order (match by MenuItemId + StatusCode)
+            UPDATE d
+            SET d.OrderId = @destOrderId,
+                d.OrderNumber = @destOrderNo,
+                d.ModifiedOn = GETDATE()
+            FROM RestaurantOrderDetailCur d
+            WHERE d.OrderId = @srcOrderId
+              AND NOT EXISTS (
+                SELECT 1 FROM RestaurantOrderDetailCur x
+                WHERE x.OrderId = @destOrderId
+                  AND x.MenuItemId = d.MenuItemId
+                  AND x.StatusCode = d.StatusCode
+              );
+
+            -- For items that DO already exist in destination, just remove duplicates from ghost
+            DELETE FROM RestaurantOrderDetailCur
+            WHERE OrderId = @srcOrderId;
+          `);
+      }
+
+      // Step 3: Now safe to close all ghost orders (their items have been moved)
+      await transaction
+        .request()
+        .input("orderGuid", sql.UniqueIdentifier, orderGuid)
+        .input("tableNo", sql.VarChar(20), actualTableNo)
+        .query(`
+          UPDATE RestaurantOrderCur 
+          SET isOrderClosed = 1, ModifiedOn = GETDATE() 
+          WHERE Tableno = @tableNo 
+            AND (isOrderClosed = 0 OR isOrderClosed IS NULL) 
+            AND OrderId <> @orderGuid
+        `);
+
+      console.log(`✅ [GhostShield] Closed ${ghostOrdersRes.recordset.length} ghost order(s) after item migration`);
+    }
   }
 
   // 🚀 OPTIMIZATION 2: Batch Item Processing
@@ -588,8 +652,37 @@ async function syncToProfessionalTables(
       END
       ELSE
       BEGIN
-        INSERT INTO RestaurantOrderDetailCur (OrderDetailId, OrderId, DishId, Description, DishName,SongName, Quantity, PricePerUnit, ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, ModifiersJSON, ComboDetailsJSON, OrderNumber, Remarks, isTakeAway, BusinessUnitId, OrderDateTime, DiscountAmount, DiscountType, ServiceCharge, start_date)
-        VALUES (@${p_id}, @orderId, @${p_dish}, @${p_name}, @${p_name}, @${p_song}, @${p_qty}, @${p_cost}, @${p_cost} * @${p_qty}, @${p_cost} * @${p_qty}, @${p_cost} * @${p_qty}, @${p_status}, @userId, CASE WHEN @${p_status} = 2 THEN GETDATE() ELSE @${p_created} END, @${p_mods}, @${p_combo}, @orderNo, @${p_note}, @${p_tw}, @bizId, GETDATE(), @${p_disc}, @${p_disctype}, @${p_sc}, @startDate);
+        -- 🛡️ ANTI-DUPLICATE: Before inserting, check if a VOIDED row for the same dish+order exists.
+        -- If yes, RESTORE it rather than creating a second row (prevents "4 items" when 3 ordered).
+        DECLARE @existingVoidedId${idx} UNIQUEIDENTIFIER = NULL;
+        SELECT TOP 1 @existingVoidedId${idx} = OrderDetailId
+        FROM RestaurantOrderDetailCur
+        WHERE OrderId = @orderId AND DishId = @${p_dish} AND StatusCode = 0
+        ORDER BY ModifiedOn DESC;
+
+        IF @existingVoidedId${idx} IS NOT NULL
+        BEGIN
+          -- Restore the voided row to SENT, update its lineItemId to match the new client ID
+          UPDATE RestaurantOrderDetailCur SET
+            OrderDetailId = @${p_id},
+            Quantity = @${p_qty}, PricePerUnit = @${p_cost},
+            ActualAmount = @${p_cost} * @${p_qty},
+            TotalDetailLineAmount = @${p_cost} * @${p_qty},
+            BaseAmount = @${p_cost} * @${p_qty},
+            StatusCode = @${p_status},
+            Description = @${p_name}, DishName = @${p_name}, SongName = @${p_song},
+            ModifiedBy = @userId, ModifiedOn = GETDATE(),
+            ModifiersJSON = @${p_mods}, ComboDetailsJSON = @${p_combo},
+            OrderNumber = @orderNo, Remarks = @${p_note}, isTakeAway = @${p_tw},
+            DiscountAmount = @${p_disc}, DiscountType = @${p_disctype}, ServiceCharge = @${p_sc},
+            CreatedOn = GETDATE()
+          WHERE OrderDetailId = @existingVoidedId${idx};
+        END
+        ELSE
+        BEGIN
+          INSERT INTO RestaurantOrderDetailCur (OrderDetailId, OrderId, DishId, Description, DishName,SongName, Quantity, PricePerUnit, ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, ModifiersJSON, ComboDetailsJSON, OrderNumber, Remarks, isTakeAway, BusinessUnitId, OrderDateTime, DiscountAmount, DiscountType, ServiceCharge, start_date)
+          VALUES (@${p_id}, @orderId, @${p_dish}, @${p_name}, @${p_name}, @${p_song}, @${p_qty}, @${p_cost}, @${p_cost} * @${p_qty}, @${p_cost} * @${p_qty}, @${p_cost} * @${p_qty}, @${p_status}, @userId, CASE WHEN @${p_status} = 2 THEN GETDATE() ELSE @${p_created} END, @${p_mods}, @${p_combo}, @orderNo, @${p_note}, @${p_tw}, @bizId, GETDATE(), @${p_disc}, @${p_disctype}, @${p_sc}, @startDate);
+        END
       END
 
       -- Sync Modifiers for Item ${idx}
@@ -896,37 +989,55 @@ router.post("/save-cart", async (req, res) => {
     ) {
       currentOrderId = await getOrGenerateOrderId(req, cleanId);
     } else if (!hasItems) {
-      // 🚀 NUCLEAR CLEAR: If saving an empty cart, we should clear EVERY open order for this table
-      // and reset the table status completely to prevent ghosts.
-      console.log(
-        `[TRACE] [${now}] [SAVE-CART] NUCLEAR CLEAR for Table ${cleanId}`,
-      );
-      await pool.request().input("tid", sql.VarChar(50), cleanId).query(`
-          DECLARE @TableNo VARCHAR(20);
-          SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableId = @tid;
+      // 🚀 NUCLEAR CLEAR: If saving an empty cart, clear all open orders for this table.
+      // 🛡️ GUARD: First check if the DB has any SENT/READY items — if so, the order is still
+      // active and we must NOT nuke it (clearCart can run with empty local state while DB has data).
+      const sentCheckRes = await pool.request().input("tidForCheck", sql.VarChar(50), cleanId).query(`
+        DECLARE @TableNoCheck VARCHAR(20);
+        SELECT TOP 1 @TableNoCheck = TableNumber FROM TableMaster WHERE TableId = @tidForCheck;
+        SELECT COUNT(*) AS SentCount
+        FROM RestaurantOrderDetCur d
+        JOIN RestaurantOrderCur h ON h.OrderId = d.OrderId
+        WHERE h.Tableno = @TableNoCheck
+          AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
+          AND d.StatusCode >= 2  -- StatusCode 2=SENT, 3=READY, 4=SERVED
+      `);
+      const sentCount = sentCheckRes.recordset[0]?.SentCount || 0;
 
-          IF @TableNo IS NOT NULL
-          BEGIN
-            -- Delete all unsent items for ALL open orders on this table
-            DELETE FROM RestaurantmodifierdetailCur WHERE OrderDetailId IN (
-              SELECT OrderDetailId FROM RestaurantOrderDetailCur WHERE OrderId IN (
+      if (sentCount > 0) {
+        console.log(`[TRACE] [${now}] [SAVE-CART] NUCLEAR CLEAR BLOCKED — DB has ${sentCount} SENT/READY items. Order is still active.`);
+        // Don't nuke — use existing order ID so subsequent sync picks up the right order
+        currentOrderId = orderId || null;
+      } else {
+        console.log(`[TRACE] [${now}] [SAVE-CART] NUCLEAR CLEAR for Table ${cleanId} (confirmed: no sent items in DB)`);
+        await pool.request().input("tid", sql.VarChar(50), cleanId).query(`
+            DECLARE @TableNo VARCHAR(20);
+            SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableId = @tid;
+
+            IF @TableNo IS NOT NULL
+            BEGIN
+              -- Delete all unsent items for ALL open orders on this table
+              DELETE FROM RestaurantmodifierdetailCur WHERE OrderDetailId IN (
+                SELECT OrderDetailId FROM RestaurantOrderDetailCur WHERE OrderId IN (
+                  SELECT OrderId FROM RestaurantOrderCur WHERE Tableno = @TableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+                ) AND StatusCode = 1
+              );
+              DELETE FROM RestaurantOrderDetailCur WHERE OrderId IN (
                 SELECT OrderId FROM RestaurantOrderCur WHERE Tableno = @TableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
-              ) AND StatusCode = 1
-            );
-            DELETE FROM RestaurantOrderDetailCur WHERE OrderId IN (
-              SELECT OrderId FROM RestaurantOrderCur WHERE Tableno = @TableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
-            ) AND StatusCode = 1;
+              ) AND StatusCode = 1;
 
-            -- Force close all orders
-            UPDATE RestaurantOrderCur SET isOrderClosed = 1, ModifiedOn = GETDATE() 
-            WHERE Tableno = @TableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL);
-          END
+              -- Force close all orders
+              UPDATE RestaurantOrderCur SET isOrderClosed = 1, ModifiedOn = GETDATE() 
+              WHERE Tableno = @TableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL);
+            END
 
-          -- Reset table status
-          UPDATE TableMaster SET Status = 0, entry_status = NULL, CurrentOrderId = NULL, StartTime = NULL, CustomerName = NULL, Pax = NULL WHERE TableId = @tid;
-        `);
-      currentOrderId = null;
+            -- Reset table status
+            UPDATE TableMaster SET Status = 0, entry_status = NULL, CurrentOrderId = NULL, StartTime = NULL, CustomerName = NULL, Pax = NULL WHERE TableId = @tid;
+          `);
+        currentOrderId = null;
+      }
     }
+
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -1240,7 +1351,34 @@ router.get("/cart/:tableId", async (req, res) => {
 
     const tableRow = tableInfo.recordset[0];
     const tableNumber = tableRow?.TableNumber;
-    const currentOrderId = tableRow?.CurrentOrderId;
+    let currentOrderId = tableRow?.CurrentOrderId;
+
+    // 🚀 RESOLVE ACTIVE DB ORDER ID: If TableMaster has no current order ID, check RestaurantOrderCur
+    if (!currentOrderId || currentOrderId === "NEW" || currentOrderId === "PENDING" || currentOrderId.length < 5) {
+      try {
+        const activeDbOrder = await pool
+          .request()
+          .input("tableNo", sql.VarChar(20), String(tableNumber || ""))
+          .query(`
+            SELECT TOP 1 OrderNumber 
+            FROM RestaurantOrderCur 
+            WHERE Tableno = @tableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+              AND OrderNumber IS NOT NULL AND OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '') AND OrderNumber NOT LIKE 'TEMP-%'
+            ORDER BY CreatedOn DESC
+          `);
+        const dbOrderNo = activeDbOrder.recordset[0]?.OrderNumber;
+        if (dbOrderNo) {
+          currentOrderId = dbOrderNo;
+          // Sync it back to TableMaster
+          await pool.request()
+            .input("tid", sql.VarChar(50), cleanId)
+            .input("oid", sql.NVarChar(50), currentOrderId)
+            .query("UPDATE TableMaster SET CurrentOrderId = @oid, StartTime = ISNULL(StartTime, GETDATE()) WHERE TableId = @tid");
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to resolve active DB order in /cart:", err.message);
+      }
+    }
 
     // 🔥 Fetch order-level discount from RestaurantOrderCur (applied by QR customer)
     let orderDiscount = null;
@@ -1873,6 +2011,15 @@ router.post("/update-item-status", async (req, res) => {
       tableId: String(resolvedTableId || "").toLowerCase(),
       orderId,
     });
+
+    if (resolvedTableId) {
+      const cleanTableId = String(resolvedTableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+      syncTableStatus(req, resolvedTableId).catch(() => {});
+      req.app.get("io")?.emit("cart_updated", {
+        tableId: cleanTableId,
+      });
+    }
+
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1904,9 +2051,9 @@ router.get("/active-kitchen", async (req, res) => {
       ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
       LEFT JOIN TableMaster tm ON h.Tableno = tm.TableNumber
       WHERE (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
-      -- 🚀 FIX: Include SENT (2), READY (3), SERVED (4), HOLD (5) items for Merge Bill to work
-      -- Also include recently voided items (StatusCode 0) within last 3 minutes for sync consistency
-      AND (d.StatusCode IN (2,3,4,5) OR (d.StatusCode = 0 AND DATEDIFF(MINUTE, d.ModifiedOn, GETDATE()) < 3))
+      -- 🚀 Include only active items: SENT (2), READY (3), SERVED (4), HOLD (5)
+      -- VOIDED items (StatusCode=0) are excluded — they should never appear on KDS or printer
+      AND d.StatusCode IN (2,3,4,5)
       AND h.OrderNumber IS NOT NULL
       AND h.OrderNumber NOT LIKE 'TEMP-%'
       AND h.OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '')

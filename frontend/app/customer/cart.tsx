@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Platform,
   Animated,
+  Dimensions,
+  Easing,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Theme } from "../../constants/theme";
@@ -18,6 +20,163 @@ import { useOrderContextStore } from "../../stores/orderContextStore";
 import { useCompanySettingsStore } from "../../stores/companySettingsStore";
 import { API_URL } from "../../constants/Config";
 import { Ionicons } from "@expo/vector-icons";
+
+// 🍕 Food particle config — each floats on its own arc trajectory
+const FOOD_PARTICLES = [
+  { emoji: "🍕", startX: 0,   startY: 0,  endX: -110, endY: -90,  delay: 0,    duration: 2200 },
+  { emoji: "🍜", startX: 0,   startY: 0,  endX:  110, endY: -85,  delay: 300,  duration: 2000 },
+  { emoji: "🍗", startX: 0,   startY: 0,  endX: -130, endY:  20,  delay: 600,  duration: 2400 },
+  { emoji: "🥗", startX: 0,   startY: 0,  endX:  130, endY:  25,  delay: 900,  duration: 2100 },
+  { emoji: "🍰", startX: 0,   startY: 0,  endX: -70,  endY:  110, delay: 1200, duration: 2300 },
+  { emoji: "🧆", startX: 0,   startY: 0,  endX:  70,  endY:  115, delay: 1500, duration: 2000 },
+];
+
+const FoodParticle = ({ emoji, endX, endY, delay, duration }: any) => {
+  const x = useRef(new Animated.Value(0)).current;
+  const y = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.3)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const run = () => {
+      x.setValue(0); y.setValue(0); opacity.setValue(0); scale.setValue(0.3); rotate.setValue(0);
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.parallel([
+          Animated.timing(opacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1.2, duration: 400, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(x, { toValue: endX, duration, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+          Animated.timing(y, { toValue: endY, duration, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+          Animated.timing(rotate, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true }),
+          Animated.sequence([
+            Animated.delay(duration * 0.55),
+            Animated.timing(opacity, { toValue: 0, duration: duration * 0.45, useNativeDriver: true }),
+          ]),
+          Animated.sequence([
+            Animated.delay(duration * 0.3),
+            Animated.timing(scale, { toValue: 0.7, duration: duration * 0.7, useNativeDriver: true }),
+          ]),
+        ]),
+      ]).start(() => run());
+    };
+    run();
+  }, []);
+
+  const spin = rotate.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+
+  return (
+    <Animated.View
+      style={{
+        position: "absolute",
+        transform: [{ translateX: x }, { translateY: y }, { scale }, { rotate: spin }],
+        opacity,
+      }}
+    >
+      <Text style={{ fontSize: 28 }}>{emoji}</Text>
+    </Animated.View>
+  );
+};
+
+const SpeederLoader = () => {
+  const floatY = useRef(new Animated.Value(0)).current;
+  const rotateVal = useRef(new Animated.Value(0)).current;
+  const glowScale = useRef(new Animated.Value(1)).current;
+  const plateScale = useRef(new Animated.Value(1)).current;
+
+  // Subtitle cycling
+  const subtitles = [
+    "Flipping pans and firing up the kitchen...",
+    "Gathering the freshest ingredients...",
+    "Your order is on its way! 🔥",
+  ];
+  const [subtitleIdx, setSubtitleIdx] = useState(0);
+  const subtitleOpacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    // Floating bob
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatY, { toValue: -14, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(floatY, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    ).start();
+
+    // Spinning orbit ring
+    Animated.loop(
+      Animated.timing(rotateVal, { toValue: 1, duration: 3200, easing: Easing.linear, useNativeDriver: true })
+    ).start();
+
+    // Glow pulse
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowScale, { toValue: 1.18, duration: 900, useNativeDriver: true }),
+        Animated.timing(glowScale, { toValue: 1, duration: 900, useNativeDriver: true }),
+      ])
+    ).start();
+
+    // Plate heartbeat
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(plateScale, { toValue: 1.08, duration: 700, useNativeDriver: true }),
+        Animated.timing(plateScale, { toValue: 0.96, duration: 600, useNativeDriver: true }),
+        Animated.timing(plateScale, { toValue: 1, duration: 400, useNativeDriver: true }),
+      ])
+    ).start();
+
+    // Subtitle crossfade cycle
+    const cycleSubtitle = () => {
+      Animated.sequence([
+        Animated.timing(subtitleOpacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]).start(() => {
+        setSubtitleIdx(prev => (prev + 1) % subtitles.length);
+        Animated.timing(subtitleOpacity, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+      });
+    };
+    const interval = setInterval(cycleSubtitle, 2200);
+    return () => clearInterval(interval);
+  }, []);
+
+  const spin = rotateVal.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+  const { width: windowWidth, height: windowHeight } = Dimensions.get("window");
+
+  return (
+    <View style={[styles.speederOverlay, { width: windowWidth, height: windowHeight }]}>
+      {/* Center floating plate container */}
+      <Animated.View style={{ transform: [{ translateY: floatY }], alignItems: "center", justifyContent: "center", marginBottom: 28, position: "relative", width: 200, height: 200 }}>
+        
+        {/* Flying food particles — centered relative to the plate container */}
+        <View style={{ position: "absolute", width: 28, height: 28, alignItems: "center", justifyContent: "center", zIndex: 10 }}>
+          {FOOD_PARTICLES.map((p, i) => (
+            <FoodParticle key={i} {...p} />
+          ))}
+        </View>
+
+        {/* Outer glow ring */}
+        <Animated.View style={[styles.loaderGlow, { transform: [{ scale: glowScale }] }]} />
+
+        {/* Spinning dashed orbit */}
+        <Animated.View style={[styles.loaderRing, { transform: [{ rotate: spin }] }]}>
+          <View style={styles.ringDot} />
+          <View style={[styles.ringDot, { bottom: -4, top: undefined }]} />
+          <View style={[styles.ringDot, { top: undefined, left: -4, right: undefined, bottom: "50%" }]} />
+        </Animated.View>
+
+        {/* Plate icon */}
+        <Animated.View style={[styles.loaderPlatter, { transform: [{ scale: plateScale }] }]}>
+          <Text style={{ fontSize: 38 }}>🍽️</Text>
+        </Animated.View>
+      </Animated.View>
+
+      <Text style={styles.loaderTitleText}>Sending to Kitchen</Text>
+      <Animated.Text style={[styles.loaderSubtitleText, { opacity: subtitleOpacity }]}>
+        {subtitles[subtitleIdx]}
+      </Animated.Text>
+    </View>
+  );
+};
 
 export default function CustomerCartScreen() {
   const router = useRouter();
@@ -35,6 +194,8 @@ export default function CustomerCartScreen() {
   const animSuccessOpacity = useRef(new Animated.Value(0)).current;
   const animButtonColor = useRef(new Animated.Value(0)).current; // 0 = brand, 1 = emerald success
   const animButtonWidth = useRef(new Animated.Value(1)).current; // 1 = full width, 0 = circular capsule
+  const animLoaderOpacity = useRef(new Animated.Value(1)).current; // Smooth overlay fade-out
+  const animLoaderScale = useRef(new Animated.Value(1)).current;  // Scale-up on smooth exit
   
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -230,113 +391,70 @@ export default function CustomerCartScreen() {
 
     if (submitting || isAnimating) return;
     setIsAnimating(true);
+    setSubmitting(true);
 
-    // 🚀 START PREMIUM MICRO-ANIMATION SEQUENCE (ROCKET LAUNCH)
+    // 🚀 Reset values for fluid progress loading animation
     animButtonScale.setValue(1);
     animTextOpacity.setValue(1);
-    animRocketScale.setValue(0);
-    animRocketY.setValue(40);
-    animShake.setValue(0);
+    animButtonWidth.setValue(0); // Repurposed for progress bar width (0 to 1 -> 0% to 100%)
+    animButtonColor.setValue(0); // 0 = Orange (Theme.primary), 1 = Emerald Green
     animSuccessOpacity.setValue(0);
-    animButtonColor.setValue(0);
-    animButtonWidth.setValue(1);
+    animLoaderOpacity.setValue(1); // Full opacity at start
 
     const { Easing } = require("react-native");
 
     Animated.sequence([
-      // 1. Press bounce down + start shrinking button width to circle (pill)
+      // 1. Click press bounce + fade out "Place Order" text
       Animated.parallel([
         Animated.timing(animButtonScale, {
-          toValue: 0.94,
-          duration: 150,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(animButtonWidth, {
-          toValue: 0, // Morph to circle
-          duration: 350,
-          easing: Easing.bezier(0.25, 1, 0.5, 1),
-          useNativeDriver: false,
-        }),
-      ]),
-      // 2. Snap back button scale while fading text out
-      Animated.parallel([
-        Animated.timing(animButtonScale, {
-          toValue: 1,
-          duration: 200,
-          easing: Easing.out(Easing.back(1.5)),
+          toValue: 0.95,
+          duration: 100,
           useNativeDriver: true,
         }),
         Animated.timing(animTextOpacity, {
           toValue: 0,
-          duration: 200,
+          duration: 150,
           useNativeDriver: true,
         }),
       ]),
-      // 3. Load Rocket: Slide rocket in from below and scale it up
+      // 2. Spring button back up + flow progress overlay + subtle pulse wave
       Animated.parallel([
-        Animated.timing(animRocketScale, {
+        Animated.spring(animButtonScale, {
           toValue: 1,
-          duration: 300,
-          easing: Easing.out(Easing.back(1.5)),
+          friction: 4,
+          tension: 40,
           useNativeDriver: true,
         }),
-        Animated.timing(animRocketY, {
-          toValue: 0,
-          duration: 300,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-      // 4. Engine Ignition Tremble: Shake rocket left/right rapidly
-      Animated.sequence([
-        Animated.timing(animShake, { toValue: 4, duration: 50, useNativeDriver: true }),
-        Animated.timing(animShake, { toValue: -4, duration: 50, useNativeDriver: true }),
-        Animated.timing(animShake, { toValue: 4, duration: 50, useNativeDriver: true }),
-        Animated.timing(animShake, { toValue: -4, duration: 50, useNativeDriver: true }),
-        Animated.timing(animShake, { toValue: 3, duration: 50, useNativeDriver: true }),
-        Animated.timing(animShake, { toValue: -3, duration: 50, useNativeDriver: true }),
-        Animated.timing(animShake, { toValue: 0, duration: 50, useNativeDriver: true }),
-      ]),
-      // 5. BLASTOFF! Rocket shoots straight up into space
-      Animated.parallel([
-        Animated.timing(animRocketY, {
-          toValue: -120, // Shoots straight out of button bounds
-          duration: 350,
-          easing: Easing.bezier(0.5, 0, 1, 1), // accelerating
-          useNativeDriver: true,
-        }),
-        Animated.timing(animRocketScale, {
-          toValue: 0.5, // Shrinks as it travels further away
-          duration: 350,
-          useNativeDriver: true,
-        }),
-      ]),
-      // 6. Morph button back to full width + transition color to green
-      Animated.parallel([
+        // Smoothly fill progress bar to 100%
         Animated.timing(animButtonWidth, {
-          toValue: 1, // Morph back to wide
-          duration: 500,
-          easing: Easing.bezier(0.25, 1, 0.5, 1),
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
           useNativeDriver: false,
         }),
-        Animated.timing(animButtonColor, {
-          toValue: 1, // Turn emerald green
-          duration: 500,
-          useNativeDriver: false,
-        }),
+        // Energy pulse wave
+        Animated.sequence([
+          Animated.timing(animButtonScale, { toValue: 1.02, duration: 300, useNativeDriver: true }),
+          Animated.timing(animButtonScale, { toValue: 0.98, duration: 300, useNativeDriver: true }),
+          Animated.timing(animButtonScale, { toValue: 1.02, duration: 300, useNativeDriver: true }),
+          Animated.timing(animButtonScale, { toValue: 1, duration: 300, useNativeDriver: true }),
+        ])
       ]),
-      // 7. Confirmed pop state (spring zoom + fade)
+      // 3. Complete progress: smoothly morph color to success green
+      Animated.timing(animButtonColor, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: false,
+      }),
+      // 4. Spring pop checkmark and "Confirmed!" text
       Animated.timing(animSuccessOpacity, {
         toValue: 1,
-        duration: 350,
-        easing: Easing.out(Easing.back(1.8)),
+        duration: 250,
         useNativeDriver: true,
       }),
-      // Hold state for satisfying impact
-      Animated.delay(600),
+      // Satifying brief hold
+      Animated.delay(400),
     ]).start(async () => {
-      setSubmitting(true);
       try {
         const sendResponse = await fetch(`${API_URL}/api/orders/send`, {
           method: "POST",
@@ -398,6 +516,7 @@ export default function CustomerCartScreen() {
               return {
                 carts: { ...state.carts, [ctxId]: clearedCart },
                 cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+                lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: Date.now() },
               };
             });
           }
@@ -407,20 +526,38 @@ export default function CustomerCartScreen() {
             await useCartStore.getState().fetchCartFromDB(orderContext.tableId, true);
           }
           
-          // Reset animation triggers & show success modal
-          setIsAnimating(false);
-          setShowSuccessModal(true);
+          // Smoothly fade + scale out the loader overlay before showing success modal
+          Animated.parallel([
+            Animated.timing(animLoaderOpacity, {
+              toValue: 0,
+              duration: 600,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.timing(animLoaderScale, {
+              toValue: 1.15,
+              duration: 600,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            animLoaderOpacity.setValue(1);
+            animLoaderScale.setValue(1);
+            setSubmitting(false);
+            setIsAnimating(false);
+            setShowSuccessModal(true);
+          });
         } else {
           const errText = await sendResponse.text();
           console.error("Kitchen Send Error:", errText);
           Alert.alert("Order Failed", "Failed to send items to the kitchen. Please contact staff.");
           setIsAnimating(false);
+          setSubmitting(false);
         }
       } catch (err) {
         console.error("Error placing order:", err);
         Alert.alert("Network Error", "Failed to contact order server. Please try again.");
         setIsAnimating(false);
-      } finally {
         setSubmitting(false);
       }
     });
@@ -567,51 +704,70 @@ export default function CustomerCartScreen() {
                 inputRange: [0, 1],
                 outputRange: [Theme.primary, "#059669"], // Emerald success green
               }),
-              width: animButtonWidth.interpolate({
-                inputRange: [0, 1],
-                outputRange: ["16%", "100%"], // Shrinks to small circle then grows back
-              }),
-              alignSelf: "center", // Keeps it centered as it morphs
-              borderRadius: animButtonWidth.interpolate({
-                inputRange: [0, 1],
-                outputRange: [28, 16], // Becomes fully circular when small
-              }),
             }
           ]}
         >
             <TouchableOpacity style={styles.orderBtn} onPress={handlePlaceOrder} disabled={isAnimating || submitting}>
+              {/* Sleek fluid progress loading bar overlay */}
+              <Animated.View 
+                style={[
+                  styles.progressBarOverlay,
+                  {
+                    width: animButtonWidth.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ["0%", "100%"]
+                    })
+                  }
+                ]}
+              />
+
               {/* Default text state */}
               <Animated.View style={[styles.btnTextContainer, { opacity: animTextOpacity }]}>
                 <Text style={styles.orderBtnText}>Place Order • {currencySymbol}{grandTotal.toFixed(2)}</Text>
               </Animated.View>
 
-              {/* Animated Rocket Launch Capsule */}
-              <Animated.View
+              {/* Loader / progress text state */}
+              <Animated.View 
                 style={[
-                  styles.animatedItem,
-                  {
-                    transform: [
-                      { scale: animRocketScale },
-                      { translateY: animRocketY },
-                      { translateX: animShake },
-                      { rotate: "-45deg" }, // tilts the paper plane to point straight up
-                    ],
-                  },
+                  styles.loaderTextContainer, 
+                  { 
+                    opacity: animTextOpacity.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 0]
+                    }),
+                    display: submitting ? "flex" : "none"
+                  }
                 ]}
               >
-                <Ionicons name="paper-plane-outline" size={28} color="#FFF" />
+                <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.orderBtnText}>Sending...</Text>
               </Animated.View>
 
               {/* Confirmed / success state */}
               <Animated.View style={[styles.successContainer, { opacity: animSuccessOpacity }]}>
-                {submitting ? (
-                  <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
-                ) : (
-                  <Ionicons name="checkmark-circle-outline" size={22} color="#FFF" style={{ marginRight: 8 }} />
-                )}
-                <Text style={styles.orderBtnText}>{submitting ? "Sending..." : "Confirmed!"}</Text>
+                <Ionicons name="checkmark-circle-outline" size={22} color="#FFF" style={{ marginRight: 8 }} />
+                <Text style={styles.orderBtnText}>Confirmed!</Text>
               </Animated.View>
             </TouchableOpacity>
+        </Animated.View>
+      )}
+
+      {/* Flying Food Loading Animation Screen (smooth scale-fade exit) */}
+      {submitting && (
+        <Animated.View 
+          style={[
+            StyleSheet.absoluteFill, 
+            { 
+              opacity: animLoaderOpacity, 
+              transform: [{ scale: animLoaderScale }], 
+              zIndex: 99999,
+              justifyContent: "center",
+              alignItems: "center",
+              backgroundColor: "rgba(15, 23, 42, 0.96)"
+            }
+          ]}
+        >
+          <SpeederLoader />
         </Animated.View>
       )}
 
@@ -899,6 +1055,12 @@ const styles = StyleSheet.create({
     position: "absolute",
     alignSelf: "center",
   },
+  loaderTextContainer: {
+    position: "absolute",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   animatedItem: {
     position: "absolute",
     alignSelf: "center",
@@ -908,5 +1070,90 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+  },
+  progressBarOverlay: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: "rgba(255, 255, 255, 0.18)", // Sleek white translucent progress overlay
+  },
+  speederOverlay: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 99999,
+  },
+  loaderCenterWrapper: {
+    width: 160,
+    height: 160,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  loaderPlatter: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: "rgba(249, 115, 22, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: Theme.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    elevation: 8,
+    borderWidth: 2,
+    borderColor: "rgba(249, 115, 22, 0.4)",
+  },
+  loaderGlow: {
+    position: "absolute",
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: "rgba(249, 115, 22, 0.08)",
+  },
+  loaderRing: {
+    position: "absolute",
+    width: 136,
+    height: 136,
+    borderRadius: 68,
+    borderWidth: 2,
+    borderColor: "rgba(249, 115, 22, 0.35)",
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  ringDot: {
+    position: "absolute",
+    top: -5,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Theme.primary,
+    shadowColor: Theme.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+  },
+  loaderTitleText: {
+    fontFamily: Platform.OS === "ios" ? "Arial" : "sans-serif-medium",
+    fontWeight: "800",
+    fontSize: 22,
+    color: "#FFFFFF",
+    marginTop: 8,
+    letterSpacing: 0.5,
+    textAlign: "center",
+  },
+  loaderSubtitleText: {
+    fontFamily: Platform.OS === "ios" ? "Arial" : "sans-serif",
+    fontWeight: "400",
+    fontSize: 14,
+    color: "#94A3B8", // Muted slate gray
+    marginTop: 10,
+    textAlign: "center",
+    paddingHorizontal: 32,
   },
 });
