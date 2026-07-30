@@ -34,8 +34,8 @@ function getCustomerBaseUrl(): string {
   if (apiHost.includes("localhost") || apiHost.includes("192.168")) {
     return `${apiHost}:8081`;
   }
-  // Production customer client served directly from backend server subpath
-  return `${apiHost}/customer`;
+  // Production customer client served directly from backend server
+  return apiHost;
 }
 
 interface Table {
