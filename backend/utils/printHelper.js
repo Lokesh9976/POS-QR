@@ -70,6 +70,7 @@ function formatKOTThermalText(data, type = 'NEW') {
 
   text += `[L]Order By: ${waiter}\n`;
   text += `[L]Order #: ${orderNo}\n`;
+  text += `[L]Table No: ${tableNo}\n`;
 
   if (kitchenName && kitchenName !== 'KDS') {
     const bottomLabel = tableNo && tableNo !== 'N/A'
