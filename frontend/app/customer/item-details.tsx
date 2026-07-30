@@ -31,6 +31,7 @@ export default function CustomerItemDetailsScreen() {
 
   const [comboConfig, setComboConfig] = useState<any>(null);
   const [selections, setSelections] = useState<Record<string, string[]>>({});
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const selected = allDishes.find((d: any) => String(d.DishId) === String(dishId));
@@ -197,11 +198,7 @@ export default function CustomerItemDetailsScreen() {
         const selectedIds = selections[group.comboGroupId] || [];
         const effectiveMin = group.options && group.options.length > 0 ? Math.min(group.minSelection, group.options.length) : 0;
         if (selectedIds.length < effectiveMin) {
-          if (Platform.OS === "web") {
-            alert(`Selection Required: Please select at least ${effectiveMin} option(s) for "${group.groupName}".`);
-          } else {
-            Alert.alert("Selection Required", `Please select at least ${effectiveMin} option(s) for "${group.groupName}".`);
-          }
+          setAlertMessage(`Please select at least ${effectiveMin} option(s) for "${group.groupName}".`);
           return;
         }
       }
@@ -413,6 +410,22 @@ export default function CustomerItemDetailsScreen() {
           <Text style={styles.addToCartPrice}>${calculateTotalPrice().toFixed(2)}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Premium Custom Alert Modal */}
+      {alertMessage && (
+        <View style={styles.alertOverlay}>
+          <View style={styles.alertBox}>
+            <View style={styles.alertIconBg}>
+              <Ionicons name="warning-outline" size={28} color={Theme.primary} />
+            </View>
+            <Text style={styles.alertTitle}>Selection Required</Text>
+            <Text style={styles.alertText}>{alertMessage}</Text>
+            <TouchableOpacity style={styles.alertCloseBtn} onPress={() => setAlertMessage(null)}>
+              <Text style={styles.alertCloseText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -651,5 +664,63 @@ const styles = StyleSheet.create({
     color: "#64748B",
     fontWeight: "500",
     marginTop: 3,
+  },
+  alertOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 9999,
+  },
+  alertBox: {
+    width: "85%",
+    maxWidth: 320,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 24,
+    alignItems: "center",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  alertIconBg: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#FFF7ED",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  alertTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 8,
+  },
+  alertText: {
+    fontSize: 14,
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  alertCloseBtn: {
+    width: "100%",
+    backgroundColor: Theme.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  alertCloseText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "600",
   },
 });
