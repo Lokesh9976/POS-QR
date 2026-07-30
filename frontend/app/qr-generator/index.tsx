@@ -29,9 +29,13 @@ function getCustomerBaseUrl(): string {
     // Expo web runs on :8081 by default
     return `${protocol}//${hostname}${port ? `:${port}` : ""}`;
   }
-  // For native — use same host as API but on port 8081 (Expo web)
+  // For native
   const apiHost = API_URL.replace(/:\d+$/, ""); // strip port
-  return `${apiHost}:8081`;
+  if (apiHost.includes("localhost") || apiHost.includes("192.168")) {
+    return `${apiHost}:8081`;
+  }
+  // Production customer client served directly from backend server subpath
+  return `${apiHost}/customer`;
 }
 
 interface Table {
