@@ -255,6 +255,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads"), {
   maxAge: '1d',
   immutable: true
 }));
+app.use(express.static(path.join(__dirname, "dist")));
 
 // 🔄 Database Connection Check (for all API routes)
 app.use("/api", dbCheck);
@@ -334,17 +335,9 @@ const requireAiAuthorizedRole = (req, res, next) => {
 app.use("/api/ai", aiApiLimiter, authenticateAiToken, requireAiAuthorizedRole, aiRouter);
 app.use("/api/v1/ai", aiApiLimiter, authenticateAiToken, requireAiAuthorizedRole, aiRouter);
 
-// Root Endpoints
-app.get("/", (req, res) => {
-  res.send(`
-    <div style="font-family: sans-serif; padding: 40px; text-align: center;">
-      <h1 style="color: #4CAF50;">🚀 UCS Modular POS Backend is LIVE</h1>
-      <p>Status: ✅ Connected to Database</p>
-      <p>Time: ${new Date().toLocaleString()}</p>
-      <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-      <p style="color: #666;">Ready for Waiter & KDS Sync</p>
-    </div>
-  `);
+// Root Endpoints (Serve static client SPA fallback routing)
+app.get(["/", /^\/customer.*/], (req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 app.get("/health", (req, res) => {
