@@ -8,6 +8,7 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Theme } from "../../constants/theme";
@@ -196,7 +197,11 @@ export default function CustomerItemDetailsScreen() {
         const selectedIds = selections[group.comboGroupId] || [];
         const effectiveMin = group.options && group.options.length > 0 ? Math.min(group.minSelection, group.options.length) : 0;
         if (selectedIds.length < effectiveMin) {
-          Alert.alert("Selection Required", `Please select at least ${effectiveMin} option(s) for "${group.groupName}".`);
+          if (Platform.OS === "web") {
+            alert(`Selection Required: Please select at least ${effectiveMin} option(s) for "${group.groupName}".`);
+          } else {
+            Alert.alert("Selection Required", `Please select at least ${effectiveMin} option(s) for "${group.groupName}".`);
+          }
           return;
         }
       }
@@ -608,33 +613,43 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     paddingHorizontal: 20,
     paddingVertical: 12,
-    gap: 10,
+    gap: 12,
   },
   comboGridItem: {
     width: "48%",
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
     borderColor: "#E2E8F0",
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 1,
   },
   comboGridItemActive: {
     borderColor: Theme.primary,
-    backgroundColor: "#FFF7ED",
+    backgroundColor: "#FFFBF7",
+    shadowColor: Theme.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
   comboItemRow: {
     flexDirection: "row",
     alignItems: "center",
   },
   comboItemName: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#334155",
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1E293B",
   },
   comboItemSurcharge: {
-    fontSize: 11,
-    color: Theme.primary,
-    fontWeight: "600",
-    marginTop: 2,
+    fontSize: 12,
+    color: "#64748B",
+    fontWeight: "500",
+    marginTop: 3,
   },
 });
