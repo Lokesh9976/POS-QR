@@ -1129,7 +1129,7 @@ class UniversalPrinter {
             Order By : ${waiter} #OR-${orderNo}
           </div>
 
-          ${kitchenName && kitchenName !== "KDS" ? `<div class="kitchen-name">${kitchenName.toUpperCase()}${tableNo && tableNo !== "N/A" ? `  /  T.NO: ${tableNo}` : ""}</div>` : ""}
+          ${kitchenName && kitchenName !== "KDS" ? `<div class="kitchen-name">${kitchenName.toUpperCase()}${tableNoVal && tableNoVal !== "N/A" ? `  /  T.NO: ${tableNoVal}` : ""}</div>` : ""}
         </div>
       </body>
       </html>
@@ -1285,7 +1285,7 @@ class UniversalPrinter {
     text += `[L]Order #: ${orderNo}\n`;
 
     if (kitchenName && kitchenName !== "KDS") {
-      const bottomLabel = tableNo && tableNo !== "N/A" ? `${kitchenName.toUpperCase()}  /  T.NO: ${tableNo}` : kitchenName.toUpperCase();
+      const bottomLabel = tableNoVal && tableNoVal !== "N/A" ? `${kitchenName.toUpperCase()}  /  T.NO: ${tableNoVal}` : kitchenName.toUpperCase();
       text += "[L]--------------------------------\n";
       text += `[C]<font size='big'><B>${bottomLabel}</B></font>\n`;
       text += "[L]--------------------------------\n";
