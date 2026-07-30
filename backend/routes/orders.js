@@ -744,13 +744,9 @@ async function syncToProfessionalTables(
     DELETE FROM RestaurantOrderDetailCur WHERE OrderId = @orderId AND StatusCode = 1 ${notInClause};
   `;
 
-  if (!isQROrder) {
-    batchSql += `
-      -- Smart Void: Void sent items that were removed (not common for unsent cart but for safety)
-      UPDATE RestaurantOrderDetailCur SET StatusCode = 0, ModifiedBy = @userId, ModifiedOn = GETDATE() 
-      WHERE OrderId = @orderId AND StatusCode NOT IN (0, 1) ${notInClause};
-    `;
-  }
+  // NOTE: Smart Void removed. Standard save-cart / sync should never void SENT/READY/SERVED items (StatusCode >= 2).
+  // Voiding of sent kitchen items must only happen through the explicit POS void actions.
+
 
   batchSql += `
     -- Final Header Total Update
