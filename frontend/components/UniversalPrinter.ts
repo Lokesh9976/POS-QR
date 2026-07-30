@@ -834,10 +834,7 @@ class UniversalPrinter {
     title = title.replace(/\s*KOT\s*/gi, "").trim();
 
     const items = (data.items || []).filter((item: any) => (item.status || item.Status || "").toUpperCase() !== "VOIDED");
-    const rawTableNo = data.tableNo || "N/A";
-    const tableNoVal = !isNaN(Number(rawTableNo)) && Number(rawTableNo) < 10 
-      ? String(rawTableNo).padStart(2, '0') 
-      : rawTableNo;
+    const tableNo = data.tableNo || "N/A";
     const deviceNo = data.deviceNo || "1";
     const orderNo = data.orderNo || data.orderId || "N/A";
     const waiter = data.waiterName || "Staff";
@@ -984,7 +981,7 @@ class UniversalPrinter {
           <div class="timestamp">${timestamp}</div>
           
           <div class="table-info">
-            <span>TABLE NO : ${tableNoVal}</span>
+            <span>Table:${tableNo}</span>
           </div>
           
           <div class="headers">
@@ -1126,10 +1123,10 @@ class UniversalPrinter {
           </div>
 
           <div class="footer">
-            Order By : ${waiter} #OR-${orderNo}
+            Order By : ${waiter} #OR-${orderNo} ${tableNo && tableNo !== "N/A" ? ` | Table: ${tableNo}` : ""}
           </div>
 
-          ${kitchenName && kitchenName !== "KDS" ? `<div class="kitchen-name">${kitchenName.toUpperCase()}${tableNoVal && tableNoVal !== "N/A" ? `  /  T.NO: ${tableNoVal}` : ""}</div>` : ""}
+          ${kitchenName && kitchenName !== "KDS" ? `<div class="kitchen-name">${kitchenName.toUpperCase()}${tableNo && tableNo !== "N/A" ? `  /  T.NO: ${tableNo}` : ""}</div>` : ""}
         </div>
       </body>
       </html>
@@ -1146,10 +1143,7 @@ class UniversalPrinter {
             ? "ADDITIONAL"
             : "NEW ORDER";
     const items = (data.items || []).filter((item: any) => (item.status || item.Status || "").toUpperCase() !== "VOIDED");
-    const rawTableNo = data.tableNo || "N/A";
-    const tableNoVal = !isNaN(Number(rawTableNo)) && Number(rawTableNo) < 10 
-      ? String(rawTableNo).padStart(2, '0') 
-      : rawTableNo;
+    const tableNo = data.tableNo || "N/A";
     const waiter = data.waiterName || "Staff";
     const orderNo = data.orderNo || data.orderId || "";
     const kitchenName = data.kitchenName || "";
@@ -1161,7 +1155,7 @@ class UniversalPrinter {
     text += "[L]--------------------------------\n";
 
     // 🏠 Big centered table number
-    text += `[C]<font size='big'>TABLE NO : ${tableNoVal}</font>\n`;
+    text += `[C]<font size='big'>TABLE: ${tableNo}</font>\n`;
     text += "[L]--------------------------------\n";
 
     text += "[L]QTY  ITEM\n";
@@ -1283,9 +1277,10 @@ class UniversalPrinter {
 
     text += `[L]Order By: ${waiter}\n`;
     text += `[L]Order #: ${orderNo}\n`;
+    text += `[L]Table No: ${tableNo}\n`;
 
     if (kitchenName && kitchenName !== "KDS") {
-      const bottomLabel = tableNoVal && tableNoVal !== "N/A" ? `${kitchenName.toUpperCase()}  /  T.NO: ${tableNoVal}` : kitchenName.toUpperCase();
+      const bottomLabel = tableNo && tableNo !== "N/A" ? `${kitchenName.toUpperCase()}  /  T.NO: ${tableNo}` : kitchenName.toUpperCase();
       text += "[L]--------------------------------\n";
       text += `[C]<font size='big'><B>${bottomLabel}</B></font>\n`;
       text += "[L]--------------------------------\n";
