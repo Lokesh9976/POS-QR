@@ -892,8 +892,8 @@ class UniversalPrinter {
             border-bottom: 2px dashed #000;
             padding: 3px 0;
             margin-bottom: 6px;
-            font-size: 26px;
-            font-weight: bold;
+            font-size: 38px;
+            font-weight: 900;
           }
           
           .headers {
