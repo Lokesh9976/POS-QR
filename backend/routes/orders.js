@@ -992,7 +992,7 @@ router.post("/save-cart", async (req, res) => {
         DECLARE @TableNoCheck VARCHAR(20);
         SELECT TOP 1 @TableNoCheck = TableNumber FROM TableMaster WHERE TableId = @tidForCheck;
         SELECT COUNT(*) AS SentCount
-        FROM RestaurantOrderDetCur d
+        FROM RestaurantOrderDetailCur d
         JOIN RestaurantOrderCur h ON h.OrderId = d.OrderId
         WHERE h.Tableno = @TableNoCheck
           AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
