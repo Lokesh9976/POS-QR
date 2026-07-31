@@ -9,11 +9,13 @@ import {
   Alert,
   Platform,
   Share,
+  Image,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Theme } from "../../constants/theme";
 import { API_URL } from "../../constants/Config";
+import * as Print from "expo-print";
 
 // QR Code via web service — works on all platforms (web + native)
 // Uses qrserver.com free API to generate QR images
@@ -125,6 +127,124 @@ export default function QRGeneratorScreen() {
     window.print();
   };
 
+  const handlePrintSingle = async (table: Table) => {
+    const qrUrl = buildQrUrl(table);
+    const qrImgUrl = QR_API(qrUrl, 250);
+    const sectionName = sectionLabels[table.DiningSection] || "Section 1";
+
+    const htmlContent = `
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+          <style>
+            @page {
+              size: auto;
+              margin: 0mm;
+            }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: flex-start;
+              margin: 0;
+              padding: 10px;
+              box-sizing: border-box;
+              text-align: center;
+              background-color: #fff;
+            }
+            .card {
+              border: 2px dashed #0F172A;
+              border-radius: 12px;
+              padding: 16px;
+              width: 260px;
+              box-sizing: border-box;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              background: #fff;
+              margin: 10px auto;
+            }
+            .qr-image {
+              width: 180px;
+              height: 180px;
+              margin-bottom: 12px;
+            }
+            .title {
+              font-size: 22px;
+              font-weight: 800;
+              margin: 6px 0 4px 0;
+              color: #0F172A;
+            }
+            .section {
+              font-size: 13px;
+              font-weight: 600;
+              color: #475569;
+              background: #F1F5F9;
+              padding: 3px 8px;
+              border-radius: 6px;
+              margin-bottom: 8px;
+              display: inline-block;
+            }
+            .hint {
+              font-size: 12px;
+              color: #0284c7;
+              font-weight: 700;
+              margin-top: 4px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .url {
+              font-size: 9px;
+              color: #64748B;
+              word-break: break-all;
+              max-width: 100%;
+              margin-top: 6px;
+              font-family: monospace;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <img class="qr-image" src="${qrImgUrl}" alt="QR Code" />
+            <div class="title">Table ${table.label}</div>
+            <div class="section">${sectionName}</div>
+            <div class="hint">Scan to Order</div>
+            <div class="url">${qrUrl}</div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    if (Platform.OS === "web") {
+      const printWindow = window.open("", "_blank");
+      if (printWindow) {
+        printWindow.document.write(htmlContent);
+        printWindow.document.write(
+          '<script>' +
+          '  window.onload = function() {' +
+          '    window.print();' +
+          '    setTimeout(function() {' +
+          '      window.close();' +
+          '    }, 500);' +
+          '  };' +
+          '</script>'
+        );
+        printWindow.document.close();
+      } else {
+        Alert.alert("Error", "Pop-up blocker prevented printing. Please allow pop-ups for this site.");
+      }
+    } else {
+      try {
+        await Print.printAsync({
+          html: htmlContent,
+        });
+      } catch (error) {
+        Alert.alert("Print Error", "Failed to print the QR code.");
+      }
+    }
+  };
+
   return (
     <View style={styles.root}>
       {/* Header */}
@@ -219,16 +339,11 @@ export default function QRGeneratorScreen() {
                       style={{ width: 160, height: 160, borderRadius: 8 }}
                     />
                   ) : (
-                    // On native show QR via Image component
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires
-                    <View style={styles.qrNativeBox}>
-                      <Ionicons
-                        name="qr-code-outline"
-                        size={80}
-                        color={Theme.primary}
-                      />
-                      <Text style={styles.qrNativeHint}>Open on web to see QR</Text>
-                    </View>
+                    <Image
+                      source={{ uri: qrImgUrl }}
+                      style={{ width: 160, height: 160, borderRadius: 8 }}
+                      resizeMode="contain"
+                    />
                   )}
                 </View>
 
@@ -243,29 +358,39 @@ export default function QRGeneratorScreen() {
                   </Text>
                 </View>
 
-                {/* Actions */}
-                <View style={styles.qrActions}>
-                  <TouchableOpacity
-                    style={styles.shareBtn}
-                    onPress={() => handleShare(table)}
-                  >
-                    <Ionicons name="share-outline" size={16} color={Theme.primary} />
-                    <Text style={styles.shareBtnText}>Share</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.testBtn}
-                    onPress={() => {
-                      if (Platform.OS === "web") {
-                        window.open(qrUrl, "_blank");
-                      } else {
-                        Alert.alert("QR URL", qrUrl);
-                      }
-                    }}
-                  >
-                    <Ionicons name="open-outline" size={16} color="#fff" />
-                    <Text style={styles.testBtnText}>Test</Text>
-                  </TouchableOpacity>
-                </View>
+                 {/* Actions */}
+                 <View style={styles.qrActions}>
+                   <TouchableOpacity
+                     style={styles.printSingleBtn}
+                     onPress={() => handlePrintSingle(table)}
+                   >
+                     <Ionicons name="print-outline" size={16} color="#fff" />
+                     <Text style={styles.printSingleBtnText}>Print QR</Text>
+                   </TouchableOpacity>
+
+                   <View style={styles.qrRowActions}>
+                     <TouchableOpacity
+                       style={styles.shareBtn}
+                       onPress={() => handleShare(table)}
+                     >
+                       <Ionicons name="share-outline" size={14} color={Theme.primary} />
+                       <Text style={styles.shareBtnText}>Share</Text>
+                     </TouchableOpacity>
+                     <TouchableOpacity
+                       style={styles.testBtn}
+                       onPress={() => {
+                         if (Platform.OS === "web") {
+                           window.open(qrUrl, "_blank");
+                         } else {
+                           Alert.alert("QR URL", qrUrl);
+                         }
+                       }}
+                     >
+                       <Ionicons name="open-outline" size={14} color="#fff" />
+                       <Text style={styles.testBtnText}>Test</Text>
+                     </TouchableOpacity>
+                   </View>
+                 </View>
               </View>
             );
           })}
@@ -480,11 +605,30 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
     width: "100%",
   },
-  qrActions: {
-    flexDirection: "row",
-    gap: 8,
-    width: "100%",
-  },
+   qrActions: {
+     gap: 8,
+     width: "100%",
+   },
+   qrRowActions: {
+     flexDirection: "row",
+     gap: 8,
+     width: "100%",
+   },
+   printSingleBtn: {
+     width: "100%",
+     flexDirection: "row",
+     alignItems: "center",
+     justifyContent: "center",
+     gap: 6,
+     paddingVertical: 9,
+     borderRadius: 10,
+     backgroundColor: "#10B981", // Emerald green for printing
+   },
+   printSingleBtnText: {
+     fontSize: 13,
+     fontWeight: "700",
+     color: "#fff",
+   },
   shareBtn: {
     flex: 1,
     flexDirection: "row",

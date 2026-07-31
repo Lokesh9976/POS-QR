@@ -499,8 +499,15 @@ private static escapeHtml(str: string): string {
             min-height: 100vh;
           }
  
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
           @media print {
-            @page { margin: 0; }
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
             body { background: white; }
             .print-wrapper {
               display: flex !important;
@@ -927,7 +934,7 @@ private static escapeHtml(str: string): string {
       const { uri } = await Print.printToFileAsync({
         html: html,
         base64: false,
-        width: 226
+        width: 302
       });
       
       return uri;

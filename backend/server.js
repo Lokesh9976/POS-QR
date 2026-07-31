@@ -242,6 +242,14 @@ async function pollTables() {
 setTimeout(pollTables, 5000);
 
 // ✅ Global Middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    console.log(`🌐 [Request] ${req.method} ${req.originalUrl} - Status: ${res.statusCode} (${duration}ms)`);
+  });
+  next();
+});
 app.use(compression()); // Compress all responses
 app.use(
   cors({

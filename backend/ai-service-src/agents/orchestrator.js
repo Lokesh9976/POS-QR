@@ -85,6 +85,15 @@ function formatLocalResponse(intent, rawData, params) {
     ].join('\n');
   }
 
+  if (intent === 'get_voided_items') {
+    return [
+      `🗑️ ${title} Voided Items Report`,
+      ``,
+      `• Voided Items Qty:    ${rawData.VoidQty || 0}`,
+      `• Voided Items Amount: SGD ${Number(rawData.VoidAmount || 0).toFixed(2)}`,
+    ].join('\n');
+  }
+
   if (intent === 'get_tax_analysis') {
     const tax = Number(rawData.TotalTax || 0).toFixed(2);
     const revenue = Number(rawData.TotalRevenue || 0).toFixed(2);
@@ -337,7 +346,7 @@ async function orchestrateChat(message, sessionId, shopId, userId = 1) {
       rawData = dbResult.recordsets && dbResult.recordsets.length > 1 ? dbResult.recordsets : dbResult.recordset;
       
       // If it's a single object in array (like metrics), extract it
-      if (Array.isArray(rawData) && rawData.length === 1 && (intent === 'get_sales_metrics' || intent === 'get_discount_analysis' || intent === 'get_cancelled_orders')) {
+      if (Array.isArray(rawData) && rawData.length === 1 && (intent === 'get_sales_metrics' || intent === 'get_discount_analysis' || intent === 'get_cancelled_orders' || intent === 'get_voided_items')) {
         rawData = rawData[0];
       }
 

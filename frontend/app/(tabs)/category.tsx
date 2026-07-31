@@ -4459,9 +4459,32 @@ export default function Category() {
                               {item.time}
                             </Text>
                           </View>
-                          <Text style={{ fontSize: 11, fontFamily: Fonts.medium, color: "#475569" }} numberOfLines={2}>
-                            {item.message}
-                          </Text>
+                          {item.type === "QR_ORDER" ? (
+                            <View style={{ gap: 4, marginTop: 2, alignItems: "flex-start" }}>
+                              <Text style={{ fontSize: 11, fontFamily: Fonts.medium, color: "#64748B" }}>
+                                Order #{item.orderId ? item.orderId.split("-").pop() : "Order"}
+                              </Text>
+                              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                                <Text style={{ 
+                                  fontSize: 15, 
+                                  fontFamily: Fonts.bold, 
+                                  color: Theme.primary, 
+                                  backgroundColor: "#FFF7ED", 
+                                  paddingHorizontal: 8, 
+                                  paddingVertical: 4, 
+                                  borderRadius: 6,
+                                  borderWidth: 1,
+                                  borderColor: "#FFEDD5",
+                                }}>
+                                  {item.tableNo ? `${item.section || "DINING"} • Table ${item.tableNo}` : item.message.split("submitted for")[1]?.trim() || item.message}
+                                </Text>
+                              </View>
+                            </View>
+                          ) : (
+                            <Text style={{ fontSize: 11, fontFamily: Fonts.medium, color: "#475569" }} numberOfLines={2}>
+                              {item.message}
+                            </Text>
+                          )}
                         </View>
                         <TouchableOpacity
                           onPress={(e) => {

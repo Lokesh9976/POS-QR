@@ -42,6 +42,7 @@ const QUICK_PROMPTS = [
   { text: "Staff Performance", icon: "people-outline", type: "Staff", emoji: "👤" },
   { text: "Discount Analysis", icon: "pricetag-outline", type: "Discounts", emoji: "🎟️" },
   { text: "Cancelled Orders", icon: "close-circle-outline", type: "Cancelled", emoji: "❌" },
+  { text: "Void Items", icon: "trash-outline", type: "Void", emoji: "🗑️" },
   { text: "Payment", icon: "card-outline", type: "Payments", emoji: "💳" },
 ];
 

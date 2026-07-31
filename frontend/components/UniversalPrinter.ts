@@ -804,7 +804,7 @@ class UniversalPrinter {
       // ✅ 3. Mobile Fallback (Android/iOS)
       const { uri } = await Print.printToFileAsync({
         html,
-        width: 226, // 80mm approximate
+        width: 302, // 80mm at 96dpi (80 × 3.7795 ≈ 302px)
       });
 
       if (Platform.OS === "android" || Platform.OS === "ios") {
@@ -892,7 +892,7 @@ class UniversalPrinter {
             border-bottom: 2px dashed #000;
             padding: 3px 0;
             margin-bottom: 6px;
-            font-size: 38px;
+            font-size: 20px;
             font-weight: 900;
           }
           
@@ -970,6 +970,10 @@ class UniversalPrinter {
           }
           
           @media print {
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
             body { width: 80mm; }
             .header-box { -webkit-print-color-adjust: exact; }
           }
@@ -1123,7 +1127,8 @@ class UniversalPrinter {
           </div>
 
           <div class="footer">
-            Order By : ${waiter} #OR-${orderNo} ${tableNo && tableNo !== "N/A" ? ` | Table: ${tableNo}` : ""}
+            Order By : ${waiter} #OR-${orderNo}
+            ${tableNo && tableNo !== "N/A" ? `<div style="font-size: 14px; font-weight: 700; margin-top: 4px;">| Table: ${tableNo}</div>` : ""}
           </div>
 
           ${kitchenName && kitchenName !== "KDS" ? `<div class="kitchen-name">${kitchenName.toUpperCase()}${tableNo && tableNo !== "N/A" ? `  /  T.NO: ${tableNo}` : ""}</div>` : ""}
@@ -2021,7 +2026,7 @@ class UniversalPrinter {
       } else {
         const { uri } = await Print.printToFileAsync({
           html,
-          width: 226,
+          width: 302, // 80mm at 96dpi
         });
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(uri);

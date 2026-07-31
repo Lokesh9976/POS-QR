@@ -84,7 +84,11 @@ function getLocalFallbackIntent(userMessage) {
     return { intent: 'get_discount_analysis', params: { startDate, endDate, titlePeriod } };
   }
 
-  if (msg.includes('cancel') || msg.includes('void') || msg.includes('refund') || msg.includes('reject')) {
+  if (msg.includes('void') || msg.includes('refund') || msg.includes('reject')) {
+    return { intent: 'get_voided_items', params: { startDate, endDate, titlePeriod } };
+  }
+
+  if (msg.includes('cancel')) {
     return { intent: 'get_cancelled_orders', params: { startDate, endDate, titlePeriod } };
   }
 
@@ -153,9 +157,10 @@ Identify the user's intent. The valid intents are:
 3. get_unsold_items (requests for unsold items, slow-moving products, items with zero sales)
 4. get_staff_performance (requests for waiters/cashiers performance, best staff, orders served per employee)
 5. get_discount_analysis (requests for total discounts, promo codes use, coupon analyses)
-6. get_cancelled_orders (requests for void/cancelled bills, refund amounts)
-7. get_payment_distribution (requests for payment methods breakdown, payment mode breakdown, cash vs card distribution, UPI/NETS/PayNow sales contribution)
-8. general_query (greetings like 'hi', 'good morning', casual chat, questions not matching structural query intents, requiring direct answers or conversational chat, or any Tanglish/mixed-language messages asking to chat or requesting updates)
+6. get_cancelled_orders (requests for fully cancelled/voided bills)
+7. get_voided_items (requests for individual voided items/dishes, total item voids count, voided item amounts)
+8. get_payment_distribution (requests for payment methods breakdown, payment mode breakdown, cash vs card distribution, UPI/NETS/PayNow sales contribution)
+9. general_query (greetings like 'hi', 'good morning', casual chat, questions not matching structural query intents, requiring direct answers or conversational chat, or any Tanglish/mixed-language messages asking to chat or requesting updates)
 
 Extract these parameters as JSON:
 - startDate: String (YYYY-MM-DD)

@@ -423,7 +423,7 @@ async function syncToProfessionalTables(
           .input("destOrderNo", sql.NVarChar(50), cleanOrderNo)
           .input("srcOrderId", sql.UniqueIdentifier, ghost.OrderId)
           .query(`
-            -- Move items that don't already exist in the destination order (match by MenuItemId + StatusCode)
+            -- Move items that don't already exist in the destination order (match by DishId + StatusCode)
             UPDATE d
             SET d.OrderId = @destOrderId,
                 d.OrderNumber = @destOrderNo,
@@ -433,7 +433,7 @@ async function syncToProfessionalTables(
               AND NOT EXISTS (
                 SELECT 1 FROM RestaurantOrderDetailCur x
                 WHERE x.OrderId = @destOrderId
-                  AND x.MenuItemId = d.MenuItemId
+                  AND x.DishId = d.DishId
                   AND x.StatusCode = d.StatusCode
               );
 

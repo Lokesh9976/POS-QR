@@ -210,6 +210,14 @@ export default function SalesReport() {
   );
   const [showCancelledOrders, setShowCancelledOrders] = useState(true);
 
+  const finalBillAmount = selectedOrder
+    ? Number(selectedOrder.SubTotal || 0) -
+      Number(selectedOrder.DiscountAmount || 0) +
+      Number(selectedOrder.ServiceCharge || 0) +
+      Number(selectedOrder.TakeawayCharge || 0) +
+      Number(selectedOrder.TotalTax || 0)
+    : 0;
+
   // --- DOWNLOAD MODAL STATES ---
   const [showDownloadPanel, setShowDownloadPanel] = useState(false);
   const [downloadFilter, setDownloadFilter] = useState<FilterType>("DAILY");
@@ -3347,7 +3355,7 @@ export default function SalesReport() {
                         Total Amount
                       </Text>
                       <Text style={[styles.totalValue, { fontSize: 22 }]}>
-                        {formatCurrency(selectedOrder?.SysAmount)}
+                        {formatCurrency(finalBillAmount)}
                       </Text>
                     </View>
                     {(() => {
@@ -3363,7 +3371,7 @@ export default function SalesReport() {
                               : isMemberOrder
                                 ? Theme.success + "20"
                                 : selectedOrder?.OutstandingAmount !== undefined && Number(selectedOrder.OutstandingAmount) > 0
-                                  ? Number(selectedOrder.OutstandingAmount) === Number(selectedOrder.SysAmount)
+                                  ? Number(selectedOrder.OutstandingAmount) === Number(finalBillAmount)
                                     ? "#ef444420"
                                     : "#f59e0b20"
                                   : Theme.success + "20",
@@ -3372,7 +3380,7 @@ export default function SalesReport() {
                               : isMemberOrder
                                 ? Theme.success + "40"
                                 : selectedOrder?.OutstandingAmount !== undefined && Number(selectedOrder.OutstandingAmount) > 0
-                                  ? Number(selectedOrder.OutstandingAmount) === Number(selectedOrder.SysAmount)
+                                  ? Number(selectedOrder.OutstandingAmount) === Number(finalBillAmount)
                                     ? "#ef444440"
                                     : "#f59e0b40"
                                   : Theme.success + "40"
@@ -3385,7 +3393,7 @@ export default function SalesReport() {
                                 : isMemberOrder
                                   ? "checkmark-circle"
                                   : selectedOrder?.OutstandingAmount !== undefined && Number(selectedOrder.OutstandingAmount) > 0
-                                    ? Number(selectedOrder.OutstandingAmount) === Number(selectedOrder.SysAmount)
+                                    ? Number(selectedOrder.OutstandingAmount) === Number(finalBillAmount)
                                       ? "alert-circle"
                                       : "time"
                                     : "checkmark-circle"
@@ -3397,7 +3405,7 @@ export default function SalesReport() {
                                 : isMemberOrder
                                   ? Theme.success
                                   : selectedOrder?.OutstandingAmount !== undefined && Number(selectedOrder.OutstandingAmount) > 0
-                                    ? Number(selectedOrder.OutstandingAmount) === Number(selectedOrder.SysAmount)
+                                    ? Number(selectedOrder.OutstandingAmount) === Number(finalBillAmount)
                                       ? "#ef4444"
                                       : "#f59e0b"
                                     : Theme.success
@@ -3409,7 +3417,7 @@ export default function SalesReport() {
                               : isMemberOrder
                                 ? Theme.success
                                 : selectedOrder?.OutstandingAmount !== undefined && Number(selectedOrder.OutstandingAmount) > 0
-                                  ? Number(selectedOrder.OutstandingAmount) === Number(selectedOrder.SysAmount)
+                                  ? Number(selectedOrder.OutstandingAmount) === Number(finalBillAmount)
                                     ? "#ef4444"
                                     : "#f59e0b"
                                   : Theme.success,
@@ -3422,7 +3430,7 @@ export default function SalesReport() {
                               : isMemberOrder
                                 ? "PAID"
                                 : selectedOrder?.OutstandingAmount !== undefined && Number(selectedOrder.OutstandingAmount) > 0
-                                  ? Number(selectedOrder.OutstandingAmount) === Number(selectedOrder.SysAmount)
+                                  ? Number(selectedOrder.OutstandingAmount) === Number(finalBillAmount)
                                     ? "UNPAID"
                                     : "PARTIAL"
                                   : "PAID"}
@@ -3438,7 +3446,7 @@ export default function SalesReport() {
                       return (
                         <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Theme.border + "40", flexDirection: "row", justifyContent: "space-between" }}>
                           <Text style={{ fontSize: 11, fontFamily: Fonts.bold, color: Theme.textSecondary }}>
-                            Paid: <Text style={{ color: Theme.success, fontFamily: Fonts.black }}>{formatCurrency(Number(selectedOrder.SysAmount) - Number(selectedOrder.OutstandingAmount))}</Text>
+                            Paid: <Text style={{ color: Theme.success, fontFamily: Fonts.black }}>{formatCurrency(Number(finalBillAmount) - Number(selectedOrder.OutstandingAmount))}</Text>
                           </Text>
                           <Text style={{ fontSize: 11, fontFamily: Fonts.bold, color: Theme.textSecondary }}>
                             Pending: <Text style={{ color: "#ef4444", fontFamily: Fonts.black }}>{formatCurrency(Number(selectedOrder.OutstandingAmount))}</Text>

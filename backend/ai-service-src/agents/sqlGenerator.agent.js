@@ -14,7 +14,8 @@ const STATIC_TEMPLATES = {
         THEN ISNULL(SUM(SysAmount), 0) / COUNT(SettlementID) 
         ELSE 0 END AS AvgTicketSize
     FROM SettlementHeader 
-    WHERE CAST(LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}';
+    WHERE CAST(LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}'
+      AND ISNULL(IsCancelled, 0) = 0;
   `,
   get_top_selling_items: (params) => `
     SELECT TOP (${params.limit || 5})
@@ -24,6 +25,7 @@ const STATIC_TEMPLATES = {
     FROM SettlementItemDetail sid
     INNER JOIN SettlementHeader sh ON sid.SettlementID = sh.SettlementID
     WHERE CAST(sh.LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}'
+      AND ISNULL(sh.IsCancelled, 0) = 0
     GROUP BY sid.DishName
     ORDER BY TotalQuantity DESC;
   `,
@@ -36,6 +38,7 @@ const STATIC_TEMPLATES = {
     FROM SettlementHeader
     WHERE CAST(LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}'
       AND SER_NAME IS NOT NULL
+      AND ISNULL(IsCancelled, 0) = 0
     GROUP BY SER_NAME
     ORDER BY TotalRevenue DESC;
   `,
@@ -47,15 +50,24 @@ const STATIC_TEMPLATES = {
       ISNULL(AVG(CASE WHEN DiscountAmount > 0 THEN DiscountAmount END), 0) AS AvgDiscountPerBill,
       COUNT(SettlementID) AS TotalBills
     FROM SettlementHeader
-    WHERE CAST(LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}';
+    WHERE CAST(LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}'
+      AND ISNULL(IsCancelled, 0) = 0;
   `,
   get_cancelled_orders: (params) => `
     SELECT 
       COUNT(SettlementID) AS CancelledCount,
-      ISNULL(SUM(SysAmount), 0) AS CancelledAmount
+      ISNULL(SUM(VoidItemAmount), 0) AS CancelledAmount
     FROM SettlementHeader
     WHERE CAST(LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}'
       AND IsCancelled = 1;
+  `,
+  get_voided_items: (params) => `
+    SELECT 
+      ISNULL(SUM(VoidItemQty), 0) AS VoidQty,
+      ISNULL(SUM(VoidItemAmount), 0) AS VoidAmount
+    FROM SettlementHeader
+    WHERE CAST(LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}'
+      AND ISNULL(IsCancelled, 0) = 0;
   `,
   get_unsold_items: (params) => `
     SELECT TOP (${params.limit || 5})
@@ -66,6 +78,7 @@ const STATIC_TEMPLATES = {
     LEFT JOIN SettlementItemDetail sid ON d.Name = sid.DishName
     LEFT JOIN SettlementHeader sh ON sid.SettlementID = sh.SettlementID 
       AND CAST(sh.LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}'
+      AND ISNULL(sh.IsCancelled, 0) = 0
     WHERE d.IsActive = 1
     GROUP BY d.Name
     ORDER BY TotalQuantity ASC;
@@ -76,7 +89,8 @@ const STATIC_TEMPLATES = {
       ISNULL(SUM(SysAmount), 0) AS TotalRevenue,
       CASE WHEN SUM(SysAmount) > 0 THEN (SUM(TotalTax) / SUM(SysAmount)) * 100 ELSE 0 END AS TaxPercentage
     FROM SettlementHeader
-    WHERE CAST(LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}';
+    WHERE CAST(LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}'
+      AND ISNULL(IsCancelled, 0) = 0;
   `,
   get_payment_distribution: (params) => `
     SELECT 
@@ -86,6 +100,7 @@ const STATIC_TEMPLATES = {
     FROM SettlementHeader sh
     INNER JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
     WHERE CAST(sh.LastSettlementDate AS DATE) BETWEEN '${params.startDate}' AND '${params.endDate}'
+      AND ISNULL(sh.IsCancelled, 0) = 0
     GROUP BY sts.PayMode;
   `
 };

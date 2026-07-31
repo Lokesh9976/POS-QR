@@ -985,28 +985,28 @@ router.get("/settlement", async (req, res) => {
     const result = await pool.request().query(`
       WITH StandardSettlements AS (
         SELECT 
-          UPPER(ISNULL(
+          UPPER(LTRIM(RTRIM(ISNULL(
             (SELECT TOP 1 LTRIM(RTRIM(pm.Description)) 
              FROM Paymode pm 
-             WHERE LTRIM(RTRIM(pm.PayMode)) = LTRIM(RTRIM(sd.Paymode)) 
-                OR LTRIM(RTRIM(pm.Description)) = LTRIM(RTRIM(sd.Paymode))
-                OR CAST(pm.Position AS NVARCHAR(10)) = LTRIM(RTRIM(sd.Paymode))
+             WHERE LTRIM(RTRIM(pm.PayMode)) = LTRIM(RTRIM(sd.PayMode)) 
+                OR LTRIM(RTRIM(pm.Description)) = LTRIM(RTRIM(sd.PayMode))
+                OR CAST(pm.Position AS NVARCHAR(10)) = LTRIM(RTRIM(sd.PayMode))
             ), 
             CASE 
-              WHEN LTRIM(RTRIM(sd.Paymode)) = '2' THEN 'NETS'
-              WHEN LTRIM(RTRIM(sd.Paymode)) = '3' THEN 'PAYNOW'
-              WHEN LTRIM(RTRIM(sd.Paymode)) = '4' THEN 'UPI'
-              ELSE ISNULL(sd.Paymode, 'CASH')
+              WHEN LTRIM(RTRIM(sd.PayMode)) = '2' THEN 'NETS'
+              WHEN LTRIM(RTRIM(sd.PayMode)) = '3' THEN 'PAYNOW'
+              WHEN LTRIM(RTRIM(sd.PayMode)) = '4' THEN 'UPI'
+              ELSE LTRIM(RTRIM(ISNULL(sd.PayMode, 'CASH')))
             END
-          )) as Paymode,
+          )))) as Paymode,
           SUM(ISNULL(sd.SysAmount, 0)) as SysAmount,
           SUM(ISNULL(sd.ManualAmount, 0)) as ManualAmount,
-          SUM(ISNULL(sd.SortageOrExces, 0)) as SortageOrExces,
+          SUM(ISNULL(sd.AmountDiff, 0)) as SortageOrExces,
           CAST(SUM(ISNULL(sd.ReceiptCount, 0)) AS INT) as ReceiptCount
         FROM SettlementHeader sh
-        INNER JOIN SettlementDetail sd ON sh.SettlementID = sd.SettlementId
+        INNER JOIN SettlementTotalSales sd ON sh.SettlementID = sd.SettlementID
         WHERE ${appDateWhereSql}
-        GROUP BY sd.Paymode
+        GROUP BY sd.PayMode
       ),
       LedgerPayments AS (
         SELECT 
@@ -1117,24 +1117,24 @@ router.get("/day-end-summary", async (req, res) => {
           SUM(Count) as Count
         FROM (
           SELECT 
-            UPPER(ISNULL(
+            UPPER(LTRIM(RTRIM(ISNULL(
               (SELECT TOP 1 LTRIM(RTRIM(pm.Description)) 
                FROM Paymode pm 
-               WHERE LTRIM(RTRIM(pm.PayMode)) = LTRIM(RTRIM(sd.Paymode)) 
-                  OR LTRIM(RTRIM(pm.Description)) = LTRIM(RTRIM(sd.Paymode))
-                  OR CAST(pm.Position AS NVARCHAR(10)) = LTRIM(RTRIM(sd.Paymode))
+               WHERE LTRIM(RTRIM(pm.PayMode)) = LTRIM(RTRIM(sd.PayMode)) 
+                  OR LTRIM(RTRIM(pm.Description)) = LTRIM(RTRIM(sd.PayMode))
+                  OR CAST(pm.Position AS NVARCHAR(10)) = LTRIM(RTRIM(sd.PayMode))
               ), 
               CASE 
-                WHEN LTRIM(RTRIM(sd.Paymode)) = '2' THEN 'NETS'
-                WHEN LTRIM(RTRIM(sd.Paymode)) = '3' THEN 'PAYNOW'
-                WHEN LTRIM(RTRIM(sd.Paymode)) = '4' THEN 'UPI / GPAY'
-                ELSE ISNULL(sd.Paymode, 'CASH')
+                WHEN LTRIM(RTRIM(sd.PayMode)) = '2' THEN 'NETS'
+                WHEN LTRIM(RTRIM(sd.PayMode)) = '3' THEN 'PAYNOW'
+                WHEN LTRIM(RTRIM(sd.PayMode)) = '4' THEN 'UPI / GPAY'
+                ELSE LTRIM(RTRIM(ISNULL(sd.PayMode, 'CASH')))
               END
-            )) as Paymode,
+            )))) as Paymode,
             ISNULL(sd.SysAmount, 0) as Amount,
             1 as Count
           FROM SettlementHeader sh
-          INNER JOIN SettlementDetail sd ON sh.SettlementID = sd.SettlementId
+          INNER JOIN SettlementTotalSales sd ON sh.SettlementID = sd.SettlementID
           WHERE ${whereSql}
         ) RawData
         GROUP BY Paymode
@@ -1193,14 +1193,14 @@ router.get("/day-end-summary", async (req, res) => {
             sh.RoundedBy
           FROM SettlementHeader sh 
           WHERE ${whereSql}
-            AND NOT EXISTS (SELECT 1 FROM SettlementDetail sd WHERE sd.SettlementId = sh.SettlementID)
+            AND NOT EXISTS (SELECT 1 FROM SettlementTotalSales sd WHERE sd.SettlementID = sh.SettlementID)
           ORDER BY sh.LastSettlementDate DESC
         `);
 
       const unrecordedCount = unrecordedRes.recordset.length;
       if (unrecordedCount > 0) {
         console.warn(
-          "[DAY-END SUMMARY] Detected settlements without SettlementDetail rows.",
+          "[DAY-END SUMMARY] Detected settlements without SettlementTotalSales rows.",
           {
             start,
             end,
