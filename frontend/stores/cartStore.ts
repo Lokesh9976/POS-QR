@@ -1216,6 +1216,7 @@ export const useCartStore = create<CartState>()(
                 userId: useAuthStore.getState().user?.userId,
                 lastUpdate: currentState.lastLocalUpdate[contextId] || Date.now(),
                 entryStatus: useAuthStore.getState().user ? null : "q",
+                skipTableStatusSync: true,
                 items: items.map(item => {
                   const normalized = normalizeCartItem(item);
                   const backendMods = [...(normalized.modifiers || [])];
