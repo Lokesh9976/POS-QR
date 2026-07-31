@@ -491,7 +491,9 @@ async function syncToProfessionalTables(
       item.lineItemId && item.lineItemId.length > 10
         ? item.lineItemId
         : require("crypto").randomUUID();
-    const currentStatusCode = statusCodes[item.status || item.Status] || 2;
+    const itemStatus = item.status || item.Status;
+    const currentStatusCode = statusCodes[itemStatus] || 2;
+    console.log(`[syncToProfessionalTables] Item: ${item.name || 'Dish'} | Incoming Status: ${itemStatus} | Computed StatusCode: ${currentStatusCode}`);
     const dishName = (item.name || item.ProductName || "Dish").substring(
       0,
       200,
