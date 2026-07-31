@@ -353,12 +353,14 @@ async function syncToProfessionalTables(
       .input("isTakeaway", sql.Bit, isTakeaway ? 1 : 0)
       .input("discAmt", sql.Decimal(18, 2), discountAmount || 0)
       .input("discRemarks", sql.NVarChar(250), discountRemarks || null)
+      .input("entryStatus", sql.NVarChar(10), isQROrder ? "q" : null)
       .query(`
         UPDATE RestaurantOrderCur 
         SET PriorityCode = ISNULL(PriorityCode, @priority),
             IsTakeAway = @isTakeaway,
             DiscountAmount = CASE WHEN @discAmt > 0 THEN @discAmt ELSE DiscountAmount END,
             DiscountRemarks = CASE WHEN @discRemarks IS NOT NULL THEN @discRemarks ELSE DiscountRemarks END,
+            entry_status = CASE WHEN @entryStatus IS NOT NULL THEN @entryStatus ELSE entry_status END,
             OrderNumber = CASE 
                             WHEN OrderNumber IS NULL OR OrderNumber = '' OR OrderNumber = 'PENDING' OR OrderNumber = 'NEW' OR OrderNumber = '#NEW' OR OrderNumber LIKE 'TEMP-%' THEN @orderNo 
                             ELSE OrderNumber 
@@ -392,8 +394,9 @@ async function syncToProfessionalTables(
       .input("startDate", sql.Date, startDate)
       .input("discAmt", sql.Decimal(18, 2), discountAmount || 0)
       .input("discRemarks", sql.NVarChar(250), discountRemarks || null)
+      .input("entryStatus", sql.NVarChar(10), isQROrder ? "q" : null)
       .query(
-        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName, TakeawayCharge, start_date, DiscountAmount, DiscountRemarks) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName, @takeawayCharge, @startDate, @discAmt, @discRemarks)",
+        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName, TakeawayCharge, start_date, DiscountAmount, DiscountRemarks, entry_status) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName, @takeawayCharge, @startDate, @discAmt, @discRemarks, @entryStatus)",
       );
   }
 
