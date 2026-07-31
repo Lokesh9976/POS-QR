@@ -738,7 +738,7 @@ class UniversalPrinter {
         let isReachable = false;
         const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp.trim());
         if (isIp) {
-          isReachable = await this.isIpReachable(targetIp);
+          isReachable = await this.isIpReachable(targetIp, 9100);
         } else {
           isReachable = true;
         }
@@ -1390,7 +1390,7 @@ class UniversalPrinter {
           const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(targetIp.trim());
           let isReachable = false;
           if (isIp) {
-            isReachable = await this.isIpReachable(targetIp);
+            isReachable = await this.isIpReachable(targetIp, 9100);
           } else {
             isReachable = true; // For Bluetooth MAC addresses etc.
           }
