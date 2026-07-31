@@ -14,10 +14,10 @@ router.post("/day-start", async (req, res) => {
       return res.status(400).json({ error: "StartDate is required" });
     }
     const pool = getPool();
-    
+
     // Clear previous active records
     await pool.request().query("DELETE FROM DateEntry");
-    
+
     // Insert new business day record
     await pool.request()
       .input("username", sql.VarChar(30), username || "admin")
@@ -27,7 +27,7 @@ router.post("/day-start", async (req, res) => {
         INSERT INTO DateEntry (username, StartDate, CreatedBy, CreatedDate)
         VALUES (@username, @startDate, @createdBy, GETDATE())
       `);
-      
+
     res.json({ success: true, message: "Day started successfully" });
   } catch (err) {
     console.error("Day Start Error:", err);
@@ -38,6 +38,8 @@ router.post("/day-start", async (req, res) => {
 router.post("/day-end", async (req, res) => {
   try {
     const pool = getPool();
+    await pool.request().execute("proc_RestaurantOrder");
+
     await pool.request().query("DELETE FROM DateEntry");
     res.json({ success: true, message: "Day ended successfully" });
   } catch (err) {
@@ -994,10 +996,10 @@ router.get('/artist-sales', authenticateToken, async (req, res) => {
     const { fromDate, toDate } = req.query;
     const pool = getPool();
     const request = pool.request();
-    
+
     // Set fallback date parameters if none provided
     const parsedFrom = fromDate ? new Date(fromDate) : new Date();
-    if (!fromDate) parsedFrom.setHours(0,0,0,0);
+    if (!fromDate) parsedFrom.setHours(0, 0, 0, 0);
     const parsedTo = toDate ? new Date(toDate) : new Date();
 
     request.input("fromDate", sql.Date, parsedFrom);
@@ -1134,7 +1136,7 @@ router.post('/artist-target', authenticateToken, async (req, res) => {
     const pool = getPool();
     const parsedFrom = new Date(fromDate);
     const parsedTo = new Date(toDate);
-    
+
     // Check if target already exists for this dishId and exact date range
     const checkResult = await pool.request()
       .input('dishId', sql.UniqueIdentifier, dishId)
