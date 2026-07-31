@@ -496,7 +496,7 @@ export default function CartScreen() {
     let targetOrderId = activeOrder?.orderId || currentTableOrderId;
     appendOrder(targetOrderId || "NEW", context, cart);
     markItemsSent(targetOrderId || "NEW");
-    useCartStore.getState().markAllAsSent();
+    useCartStore.getState().markAllAsSent(true);
 
     if (context.orderType === "DINE_IN") {
       const tableId = context.tableId || currentTableData?.tableId;

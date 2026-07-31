@@ -1454,7 +1454,7 @@ export default React.memo(function CartSidebar({ width = 400 }: CartSidebarProps
     // 🚀 SPEED OPTIMIZATION: Optimistic UI
     appendOrder(targetOrderId || "NEW", orderContext, unsentItems);
     markItemsSent(targetOrderId || "NEW");
-    useCartStore.getState().markAllAsSent();
+    useCartStore.getState().markAllAsSent(true);
 
     // 🔥 FIX: Update table status locally BEFORE redirecting so it's not gray
     updateTableStatus(
