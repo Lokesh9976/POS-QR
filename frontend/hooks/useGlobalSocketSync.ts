@@ -244,10 +244,15 @@ export function useGlobalSocketSync() {
     };
 
     // --- 4. CART UPDATED ---
-    const handleCartUpdated = (data: { tableId: string }) => {
+    const handleCartUpdated = (data: { tableId: string; source?: string }) => {
       const cleanTarget = String(data.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
       if (__DEV__) {
         console.log("🛒 [Socket-Global] Cart updated (DB Sync) for Table:", cleanTarget);
+      }
+      // 🛡️ BACKEND SIDE SAFEGUARD: If update is from POS auto-save, ignore it to prevent vanishing items
+      if (data.source === "pos_auto_save") {
+        if (__DEV__) console.log("🛡️ [Socket-Global] Ignored POS auto-save cart sync to prevent vanishing items");
+        return;
       }
       const currentOrder = useOrderContextStore.getState().currentOrder;
       if (cleanTarget && currentOrder?.tableId) {

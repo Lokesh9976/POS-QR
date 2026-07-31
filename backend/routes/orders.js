@@ -1090,6 +1090,7 @@ router.post("/save-cart", async (req, res) => {
         io.emit("cart_updated", {
           tableId: cleanId.toLowerCase(),
           orderId: currentOrderId,
+          source: skipTableStatusSync ? "pos_auto_save" : "normal",
         });
       }
 
