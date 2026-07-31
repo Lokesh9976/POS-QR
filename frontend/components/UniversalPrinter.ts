@@ -2122,12 +2122,17 @@ class UniversalPrinter {
           kitchenName:
             groupItems[0].KitchenTypeName || (kCode === "0" ? "KITCHEN" : kCode),
         };
-        await this.printKOT(
-          kotData,
-          "SYSTEM",
-          isAdditional ? "ADDITIONAL" : "NEW",
-          printerIp
-        );
+        try {
+          console.log(`🖨️ [UniversalPrinter] Printing KOT for kitchen ${kotData.kitchenName} to ${printerIp || 'Default'}`);
+          await this.printKOT(
+            kotData,
+            "SYSTEM",
+            isAdditional ? "ADDITIONAL" : "NEW",
+            printerIp
+          );
+        } catch (grpErr: any) {
+          console.error(`❌ [UniversalPrinter] KOT print failed for kitchen group ${kCode} (${kotData.kitchenName}):`, grpErr.message);
+        }
       }
 
       // 6. KDS backup copy (respects enableKDSPrint setting)
