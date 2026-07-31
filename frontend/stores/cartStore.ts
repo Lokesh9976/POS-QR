@@ -1332,7 +1332,7 @@ export const useCartStore = create<CartState>()(
             const dbItems = rawItems.map((item: any) => normalizeCartItem(item));
 
             // 🚀 SMART CONTEXT MATCHING: Find the context associated with this table
-            let resolvedContextId = currentContext;
+            let resolvedContextId: string | null = currentContext;
 
             // 1. If this table matches the currently open order
             if (activeOrderObj?.tableId === tableId) {
