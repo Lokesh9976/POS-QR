@@ -469,7 +469,7 @@ export default function CustomerOrderStatusScreen() {
       // 🚀 FORCE FETCH: Bypasses Latency Shield since we navigate here immediately after placing an order
       fetchCartFromDB(orderContext.tableId, true);
     }
-  }, []);
+  }, [orderContext?.tableId]);
 
   useEffect(() => {
     if (!orderContext?.tableId) return;

@@ -1282,7 +1282,16 @@ export const useCartStore = create<CartState>()(
           try {
             const now = Date.now();
             const state = get();
-            const currentContext = state.currentContextId;
+            // 🚀 SMART CONTEXT MATCHING: Find context associated with table first
+            let currentContext = state.currentContextId;
+            const activeOrderObj = useOrderContextStore.getState().currentOrder;
+            if (activeOrderObj?.tableId === tableId) {
+              currentContext = getContextId(activeOrderObj) || currentContext;
+            } else {
+              const allContexts = Object.keys(state.carts);
+              currentContext = allContexts.find(ctx => ctx.includes(tableId)) || currentContext;
+            }
+
             if (!currentContext) return;
 
             // 🛡️ CLEAR LOCK: Reject fetches during a manual clear
@@ -1323,12 +1332,11 @@ export const useCartStore = create<CartState>()(
             const dbItems = rawItems.map((item: any) => normalizeCartItem(item));
 
             // 🚀 SMART CONTEXT MATCHING: Find the context associated with this table
-            let resolvedContextId = state.currentContextId;
-            const currentOrder = useOrderContextStore.getState().currentOrder;
+            let resolvedContextId = currentContext;
 
             // 1. If this table matches the currently open order
-            if (currentOrder?.tableId === tableId) {
-              resolvedContextId = getContextId(currentOrder) || resolvedContextId;
+            if (activeOrderObj?.tableId === tableId) {
+              resolvedContextId = getContextId(activeOrderObj) || resolvedContextId;
               if (resolvedContextId && !state.currentContextId) {
                 set({ currentContextId: resolvedContextId });
               }
