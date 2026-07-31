@@ -516,7 +516,7 @@ export default function CustomerCartScreen() {
               return {
                 carts: { ...state.carts, [ctxId]: clearedCart },
                 cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
-                lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: Date.now() },
+                lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 }, // Reset to 0 so next fetch resolves instantly
               };
             });
           }

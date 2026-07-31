@@ -482,10 +482,10 @@ export default function CustomerOrderStatusScreen() {
       }
     };
 
-    const handleTableStatus = (payload: { tableId?: string; status?: number }) => {
+    const handleTableStatus = (payload: { tableId?: string; status?: number | string }) => {
       const cleanTarget = String(payload.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
       const cleanCurrent = String(orderContext.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
-      if (cleanTarget === cleanCurrent && payload.status === 0) {
+      if (cleanTarget === cleanCurrent && (payload.status === 0 || payload.status === 'EMPTY')) {
         setIsSettled(true);
       }
     };
