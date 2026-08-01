@@ -37,8 +37,12 @@ function formatKOTThermalText(data, type = 'NEW') {
   let text = `[C]<B>${title}</B>\n`;
   text += `[C]${kotDateStr} ${kotTimeStr}\n`;
   text += '[L]--------------------------------\n';
-  text += `[C]<font size='big'>TABLE: ${tableNo}</font>\n`;
-  text += '[L]--------------------------------\n';
+  
+  if (type !== 'KDS_PRINT') {
+    text += `[C]<font size='big'>TABLE: ${tableNo}</font>\n`;
+    text += '[L]--------------------------------\n';
+  }
+
   text += '[L]QTY  ITEM\n';
   text += '[L]--------------------------------\n';
 
@@ -70,7 +74,14 @@ function formatKOTThermalText(data, type = 'NEW') {
 
   text += `[L]Order By: ${waiter}\n`;
   text += `[L]Order #: ${orderNo}\n`;
-  text += `[L]Table No: ${tableNo}\n`;
+  
+  if (type === 'KDS_PRINT') {
+    text += '[L]--------------------------------\n';
+    text += `[C]<font size='big'><B>TABLE NO : ${tableNo}</B></font>\n`;
+    text += '[L]--------------------------------\n';
+  } else {
+    text += `[L]Table No: ${tableNo}\n`;
+  }
 
   if (kitchenName && kitchenName !== 'KDS') {
     const bottomLabel = tableNo && tableNo !== 'N/A'
@@ -116,10 +127,9 @@ function _formatItem(item) {
 
   if (item.comboSelections && item.comboSelections.length > 0) {
     item.comboSelections.forEach(g => {
-      text += `[L]    ${g.groupName}:\n`;
       if (Array.isArray(g.items)) {
         g.items.forEach(opt => {
-          text += `[L]      ↳ ${opt.name}\n`;
+          text += `[L]    ↳ ${opt.name}\n`;
         });
       }
     });
@@ -178,12 +188,12 @@ async function queueQRPrintJobs(pool, sql, opts) {
       const printerRes = await pool.request()
         .input('KTV', sql.NVarChar(50), kCode)
         .query(`
-          SELECT TOP 1 PrinterIP, PrinterName
+          SELECT TOP 1 ISNULL(PrinterIP, PrinterPath) as PrinterIP, PrinterName
           FROM PrintMaster
           WHERE PrinterType = 2
             AND CAST(KitchenTypeValue AS VARCHAR(50)) = CAST(@KTV AS VARCHAR(50))
             AND IsActive = 1
-            AND PrinterIP IS NOT NULL AND PrinterIP <> ''
+            AND (PrinterIP IS NOT NULL AND PrinterIP <> '' OR PrinterPath IS NOT NULL AND PrinterPath <> '')
         `);
       if (printerRes.recordset.length > 0) {
         printerIp   = printerRes.recordset[0].PrinterIP;
@@ -219,10 +229,10 @@ async function queueQRPrintJobs(pool, sql, opts) {
   try {
     const kdsRes = await pool.request()
       .query(`
-        SELECT TOP 1 PrinterIP, PrinterName
+        SELECT TOP 1 ISNULL(PrinterIP, PrinterPath) as PrinterIP, PrinterName
         FROM PrintMaster
         WHERE PrinterType = 4 AND IsActive = 1
-          AND PrinterIP IS NOT NULL AND PrinterIP <> ''
+          AND (PrinterIP IS NOT NULL AND PrinterIP <> '' OR PrinterPath IS NOT NULL AND PrinterPath <> '')
       `);
 
     if (kdsRes.recordset.length > 0) {

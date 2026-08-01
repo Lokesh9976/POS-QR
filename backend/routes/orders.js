@@ -1268,11 +1268,30 @@ router.post("/send", async (req, res) => {
 
       await transaction.commit();
 
+      if (isQROrder) {
+        try {
+          const { queueQRPrintJobs } = require("../utils/printHelper");
+          const tableQuery = await pool
+            .request()
+            .input("tid", sql.VarChar(50), cleanId)
+            .query("SELECT TableNumber FROM TableMaster WHERE TableId = @tid");
+          const tableNo = tableQuery.recordset[0]?.TableNumber ? String(tableQuery.recordset[0].TableNumber).trim() : "";
+
+          await queueQRPrintJobs(pool, sql, {
+            orderId: finalOrderId,
+            tableNo,
+            sentItems,
+            isAdditional: isAdditionalOrder,
+          });
+          console.log(`[QR Print Queue] Queued KOT/KDS jobs for Order ${finalOrderId} Table ${tableNo}`);
+        } catch (queueErr) {
+          console.error("❌ Failed to queue QR KOT/KDS print jobs:", queueErr.message);
+        }
+      }
+
       res.json({ success: true, orderId: finalOrderId });
 
       // 🔥 REAL-TIME BROADCAST: Notify KDS screen, POS APK, and all waiter devices.
-      // The POS APK receives this event and prints directly via WiFi TCP to the kitchen printer.
-      // PrintJobQueue is NOT used here — the APK is always running and connected to printers directly.
       const io = req.app.get("io");
       if (io) {
         const tableQuery = await pool
@@ -1315,6 +1334,10 @@ router.post("/send", async (req, res) => {
           source: "order_sent", // 🔑 Allows QR frontend to distinguish order-placed vs item-added
         });
         io.emit("kot_printed", { tableId: cleanId, orderId: finalOrderId });
+
+        if (isQROrder) {
+          io.emit("print_jobs_available", { orderId: finalOrderId, storeId: "STORE_001" });
+        }
       }
 
       // 5. Refresh totals and notify instantly
