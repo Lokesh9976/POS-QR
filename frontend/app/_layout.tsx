@@ -18,7 +18,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as React from "react";
 import { useEffect } from "react";
-import { useWindowDimensions } from "react-native";
+import { useWindowDimensions, Alert } from "react-native";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { ToastProvider, useToast } from "../components/Toast";
 import { CustomerDisplayManager } from "../components/CustomerDisplayManager";
@@ -41,6 +41,14 @@ function SocketToastListener() {
           tableNo: payload.tableNo,
           section: "SECTION_1", // Default dining section fallback
         });
+
+        // 🔔 Show popup alert on the screen
+        Alert.alert(
+          "🛎️ Service Request",
+          `Table ${payload.tableNo} requested: ${payload.type}`,
+          [{ text: "OK" }],
+          { cancelable: true }
+        );
       }
     };
 
