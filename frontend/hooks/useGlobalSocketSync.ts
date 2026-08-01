@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { Platform, Alert } from "react-native";
 import { socket } from "../constants/socket";
 import { useActiveOrdersStore } from "../stores/activeOrdersStore";
 import { useCartStore } from "../stores/cartStore";
@@ -98,36 +99,17 @@ export function useGlobalSocketSync() {
           tableNo: payload.context?.tableNo,
           section: payload.context?.section,
         });
+
+        // 🔔 Show popup alert on the screen
+        Alert.alert(
+          "🔔 New QR Order",
+          `Order #${payload.orderId} has been placed for ${tableLabel}.`,
+          [{ text: "OK" }],
+          { cancelable: true }
+        );
       }
 
-      // 🖨️ Print KOT/KDS for QR orders via the POS APK directly.
-      // The POS APK is always running and connected to printers via WiFi TCP —
-      // same path that POS staff orders use. Both QR and POS orders resolve
-      // printer IPs from PrintMaster, so no hardcoding needed.
-      const isCustomerSide = typeof window !== "undefined" && (window.location.pathname.includes("/customer") || window.location.href.includes("/customer"));
-      if (isQrOrder && payload.items?.length > 0 && !isCustomerSide) {
-        if (__DEV__) {
-          console.log("🖨️ [Socket-Global] QR order — triggering KOT print:", payload.orderId);
-        }
-        const items = payload.items ?? [];
-        const context = payload.context ?? {};
-        // isAdditional only if backend explicitly flags it (not based on item status)
-        const isAdditional = payload.isAdditional === true;
-
-        UniversalPrinter.routeAndPrintOrderKOT(
-          payload.orderId,
-          context,
-          items,
-          isAdditional,
-          context.waiterName || context.userName || "QR Order",
-        ).then((printed: boolean) => {
-          if (__DEV__ && printed) {
-            console.log("✅ [Socket-Global] QR KOT printed:", payload.orderId);
-          }
-        }).catch((err: any) => {
-          console.error("[Socket-Global] QR auto-print failed:", err);
-        });
-      }
+      // 🖨️ QR printing is handled via the PrintJobQueue system triggered by the print_jobs_available event.
     };
 
     // --- 2. TABLE STATUS ---
@@ -312,80 +294,20 @@ export function useGlobalSocketSync() {
       }
     };
 
-    // --- 5.6 QR PAYMENT CONFIRMED (AUTO RECEIPT PRINT) ---
+    // --- 5.6 QR PAYMENT CONFIRMED (AUTO RECEIPT PRINT via queue) ---
     const handleQrPaymentConfirmed = (data: { tableId: string; tableNo: string; orderId: string }) => {
-      const { orderId } = data;
+      const isCustomer =
+        Platform.OS === "web" &&
+        typeof window !== "undefined" &&
+        window?.location &&
+        (window.location.pathname?.includes("/customer") ||
+          window.location.href?.includes("/customer"));
+      if (isCustomer) return; // Do not auto-print receipts on the customer's device!
+
       if (__DEV__) {
-        console.log(`💳 [Socket-Global] QR Payment confirmed for Order: ${orderId}. Triggering receipt print...`);
+        console.log(`💳 [Socket-Global] QR Payment confirmed for Order: ${data.orderId}. Triggering print queue process...`);
       }
-      if (!orderId) return;
-
-      fetch(`${API_URL}/api/sales/settlement/${orderId}`)
-        .then((res) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return res.json();
-        })
-        .then((settlementData) => {
-          if (!settlementData?.header) {
-            if (__DEV__) console.log(`⚠️ [Socket-Global] No settlement found yet for Order: ${orderId}. Will retry is not needed — receipt prints once settlement exists.`);
-            return;
-          }
-          const isCancelled = settlementData.header.IsCancelled === 1 || settlementData.header.IsCancelled === true;
-          if (isCancelled) {
-            if (__DEV__) console.log(`🚫 [Socket-Global] Settlement cancelled for Order: ${orderId}. Skipping receipt.`);
-            return;
-          }
-
-          // 1. Print Receipt
-          UniversalPrinter.printReceiptAuto(settlementData)
-            .then((printed: boolean) => {
-              if (__DEV__ && printed) {
-                console.log(`✅ [Socket-Global] Auto-receipt printed for QR Order: ${orderId}`);
-              }
-            })
-            .catch((err: any) => {
-              console.error("❌ [Socket-Global] Auto-receipt print failed:", err);
-            });
-
-          // 2. Print KOT & KDS (together with receipt for QR orders)
-          const header = settlementData.header;
-          const items = settlementData.items || [];
-          const orderContext = {
-            orderType: header.OrderType || "DINE-IN",
-            tableNo: header.TableNo || data.tableNo,
-            section: header.Section,
-            tableId: header.TableId || data.tableId,
-          };
-          const waiterName = header.SER_NAME || "QR Order";
-
-          const mappedItems = items.map((i: any) => ({
-            ...i,
-            lineItemId: i.OrderDetailId || i.lineItemId,
-            id: i.DishId || i.id,
-            name: i.DishName || i.name,
-            qty: i.Qty || i.qty,
-            price: i.Price || i.price,
-            status: i.Status || "SENT",
-          }));
-
-          UniversalPrinter.routeAndPrintOrderKOT(
-            orderId,
-            orderContext,
-            mappedItems,
-            false, // isAdditional
-            waiterName,
-            true // skipDuplicateGuard: payment completion is authoritative
-          ).then((printed: boolean) => {
-            if (__DEV__ && printed) {
-              console.log(`✅ [Socket-Global] Auto KOT/KDS printed for QR Order: ${orderId}`);
-            }
-          }).catch((err: any) => {
-            console.error("❌ [Socket-Global] Auto KOT/KDS print failed:", err);
-          });
-        })
-        .catch((err: any) => {
-          console.error(`❌ [Socket-Global] Failed to fetch settlement for QR receipt print:`, err);
-        });
+      UniversalPrinter.processPendingPrintJobs();
     };
 
     // --- 6. INSTANT CART SYNC (Socket-First) ---
@@ -412,6 +334,21 @@ export function useGlobalSocketSync() {
       store.setCartItems(payload.contextId, payload.items, true, "SOCKET_CHANGE");
     };
 
+    const handlePrintJobsAvailable = (payload: any) => {
+      const isCustomer =
+        Platform.OS === "web" &&
+        typeof window !== "undefined" &&
+        window?.location &&
+        (window.location.pathname?.includes("/customer") ||
+          window.location.href?.includes("/customer"));
+      if (isCustomer) return; // Do not process on customer device!
+
+      if (__DEV__) {
+        console.log("🖨️ [Socket-Global] Print jobs available! Processing queue...", payload);
+      }
+      UniversalPrinter.processPendingPrintJobs();
+    };
+
     socket.on("connect", handleConnect);
     socket.on("connect_error", handleConnectError);
     socket.on("new_order", handleNewOrder);
@@ -422,6 +359,7 @@ export function useGlobalSocketSync() {
     socket.on("order_closed", handleOrderClosed);
     socket.on("qr_payment_confirmed", handleQrPaymentConfirmed);
     socket.on("cart_change", handleCartChange);
+    socket.on("print_jobs_available", handlePrintJobsAvailable);
 
     return () => {
       clearInterval(keepAliveInterval);
@@ -436,6 +374,7 @@ export function useGlobalSocketSync() {
       socket.off("order_closed", handleOrderClosed);
       socket.off("qr_payment_confirmed", handleQrPaymentConfirmed);
       socket.off("cart_change", handleCartChange);
+      socket.off("print_jobs_available", handlePrintJobsAvailable);
     };
   }, []);
 
