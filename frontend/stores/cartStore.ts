@@ -1458,7 +1458,13 @@ export const useCartStore = create<CartState>()(
                 if (dbItem.id === localItem.id && getModifierKey(dbItem.modifiers) === getModifierKey(localItem.modifiers)) {
                   const dbStatus = dbItem.status || "NEW";
                   const localStatus = localItem.status || "NEW";
-                  if (dbStatus !== localStatus) return false;
+                  if (dbStatus !== localStatus) {
+                    // If local is NEW and server has it as SENT, they are the same item just sent.
+                    if (localStatus === "NEW" && dbStatus === "SENT") {
+                      return true;
+                    }
+                    return false;
+                  }
                   
                   if (isOpenPriceItem(dbItem) || isOpenPriceItem(localItem)) {
                     return dbItem.price === localItem.price;
