@@ -1159,9 +1159,11 @@ class UniversalPrinter {
     text += `[C]${kotDateStr} ${kotTimeStr}\n`;
     text += "[L]--------------------------------\n";
 
-    // 🏠 Big centered table number
-    text += `[C]<font size='big'>TABLE: ${tableNo}</font>\n`;
-    text += "[L]--------------------------------\n";
+    // 🏠 Big centered table number (only for non-KDS KOTs)
+    if (type !== "KDS_PRINT") {
+      text += `[C]<font size='big'>TABLE: ${tableNo}</font>\n`;
+      text += "[L]--------------------------------\n";
+    }
 
     text += "[L]QTY  ITEM\n";
     text += "[L]--------------------------------\n";
@@ -1213,9 +1215,8 @@ class UniversalPrinter {
 
           if (item.comboSelections && item.comboSelections.length > 0) {
             item.comboSelections.forEach((g: any) => {
-              text += `[L]    ${g.groupName}:\n`;
               g.items?.forEach((opt: any) => {
-                text += `[L]      ↳ ${opt.name}\n`;
+                text += `[L]    ↳ ${opt.name}\n`;
               });
             });
           }
@@ -1264,9 +1265,8 @@ class UniversalPrinter {
 
         if (item.comboSelections && item.comboSelections.length > 0) {
           item.comboSelections.forEach((g: any) => {
-            text += `[L]    ${g.groupName}:\n`;
             g.items?.forEach((opt: any) => {
-              text += `[L]      ↳ ${opt.name}\n`;
+              text += `[L]    ↳ ${opt.name}\n`;
             });
           });
         }
@@ -1282,7 +1282,13 @@ class UniversalPrinter {
 
     text += `[L]Order By: ${waiter}\n`;
     text += `[L]Order #: ${orderNo}\n`;
-    text += `[L]Table No: ${tableNo}\n`;
+    if (type === "KDS_PRINT") {
+      text += "[L]--------------------------------\n";
+      text += `[C]<font size='big'><B>TABLE NO : ${tableNo}</B></font>\n`;
+      text += "[L]--------------------------------\n";
+    } else {
+      text += `[L]Table No: ${tableNo}\n`;
+    }
 
     if (kitchenName && kitchenName !== "KDS") {
       const bottomLabel = tableNo && tableNo !== "N/A" ? `${kitchenName.toUpperCase()}  /  T.NO: ${tableNo}` : kitchenName.toUpperCase();
@@ -2218,6 +2224,107 @@ class UniversalPrinter {
     } catch (err) {
       console.error("[UniversalPrinter] printReceiptAuto failed:", err);
       return false;
+    }
+  }
+
+  static async processPendingPrintJobs(): Promise<void> {
+    const isCustomer =
+      Platform.OS === "web" &&
+      typeof window !== "undefined" &&
+      window?.location &&
+      (window.location.pathname?.includes("/customer") ||
+        window.location.href?.includes("/customer"));
+    if (isCustomer) return; // Customer web clients must never execute any printing logic.
+
+    try {
+      const { useAuthStore } = require("../stores/authStore");
+      const role = useAuthStore.getState().user?.role;
+      const allowedRoles = ["ADMIN", "MANAGER", "CASHIER", "SUPERVISOR"];
+      if (role && !allowedRoles.includes(role)) {
+        return; // Only ADMIN, MANAGER, CASHIER, SUPERVISOR devices process the print queue
+      }
+    } catch (authErr) {
+      console.warn("[UniversalPrinter] Could not check auth state for print queue:", authErr);
+    }
+
+
+    try {
+      const storeId = "STORE_001";
+      const headers = {
+        "Authorization": "Bearer unipro-pos-bridge-token-2026",
+        "x-store-id": storeId,
+        "Content-Type": "application/json"
+      };
+
+      // 1. Fetch pending print jobs from backend
+      const response = await fetch(`${API_URL}/api/print-jobs/pending`, {
+        method: "GET",
+        headers
+      });
+      const data = await response.json();
+      if (!data.success || !Array.isArray(data.data)) {
+        return;
+      }
+
+      const jobs = data.data;
+      for (const job of jobs) {
+        const { JobId, PrinterIp, PrinterPort, Content } = job;
+        if (!Content || !PrinterIp) {
+          await fetch(`${API_URL}/api/print-jobs/${JobId}/failed`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ errorMessage: "Missing Printer IP or Content" })
+          });
+          continue;
+        }
+
+        try {
+          const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(PrinterIp.trim());
+          let printSuccess = false;
+
+          if (Platform.OS === "web") {
+            // Web fallback: cashier web client shouldn't process directly if daemon is used.
+            // For now, let the desktop print bridge process it.
+            continue;
+          }
+
+          if (isIp) {
+            console.log(`🌐 [UniversalPrinter] WiFi print to: ${PrinterIp}`);
+            await ThermalPrinter.printTcp({
+              ip: PrinterIp,
+              port: PrinterPort || 9100,
+              payload: Content,
+              mmFeedPaper: 60,
+            });
+            printSuccess = true;
+          } else {
+            console.log(`🔵 [UniversalPrinter] Bluetooth print to: ${PrinterIp}`);
+            await ThermalPrinter.printBluetooth({
+              macAddress: PrinterIp,
+              payload: Content,
+              mmFeedPaper: 60,
+            });
+            printSuccess = true;
+          }
+
+          if (printSuccess) {
+            await fetch(`${API_URL}/api/print-jobs/${JobId}/complete`, {
+              method: "POST",
+              headers
+            });
+            console.log(`✅ [UniversalPrinter] Print job ${JobId} completed successfully`);
+          }
+        } catch (printErr: any) {
+          console.error(`❌ [UniversalPrinter] Failed to print job ${JobId}:`, printErr);
+          await fetch(`${API_URL}/api/print-jobs/${JobId}/failed`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ errorMessage: printErr.message || "Hardware print error" })
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error("[UniversalPrinter] processPendingPrintJobs error:", err.message);
     }
   }
 

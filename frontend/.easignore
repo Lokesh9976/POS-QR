@@ -1,13 +1,11 @@
 node_modules/
+**/node_modules/
 .expo/
 dist/
 ios/
+android/
 .eas/
 .git/
 .gradle/
 build/
-
-# Ignore local android build caches but upload custom native source files
-android/app/build/
-android/.gradle/
-android/build/
+**/build/

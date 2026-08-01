@@ -84,7 +84,8 @@ router.get('/pending', authenticateBridge, async (req, res) => {
       .query(`
         SELECT JobId, StoreId, PrinterName, PrinterIp, PrinterPort, Content, Status, Attempts
         FROM PrintJobQueue
-        WHERE StoreId = @StoreId AND Status = 'PENDING'
+        WHERE StoreId = @StoreId 
+          AND (Status = 'PENDING' OR (Status = 'PROCESSING' AND DATEDIFF(minute, ProcessedOn, GETDATE()) >= 2 AND Attempts < 3))
         ORDER BY CreatedOn ASC
       `);
 

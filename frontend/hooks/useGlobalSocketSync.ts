@@ -100,13 +100,6 @@ export function useGlobalSocketSync() {
           section: payload.context?.section,
         });
 
-        // 🔔 Show popup alert on the screen
-        Alert.alert(
-          "🔔 New QR Order",
-          `Order #${payload.orderId} has been placed for ${tableLabel}.`,
-          [{ text: "OK" }],
-          { cancelable: true }
-        );
       }
 
       // 🖨️ QR printing is handled via the PrintJobQueue system triggered by the print_jobs_available event.

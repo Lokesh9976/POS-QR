@@ -11,5 +11,16 @@
       "envManager": "ms-python.python:venv",
       "packageManager": "ms-python.python:pip"
     }
-  ]
+  ],
+  "java.import.exclusions": [
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/build/**"
+  ],
+  "java.project.importExclusions": [
+    "**/node_modules/**"
+  ],
+  "gradle.nestedProjects": false,
+  "gradle.projectOpenSettings.javaHome": ""
 }
+
