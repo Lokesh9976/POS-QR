@@ -30,6 +30,29 @@ function SocketToastListener() {
   const toast = useToast();
 
   useEffect(() => {
+    const handleNewOrder = (payload: any) => {
+      const user = useAuthStore.getState().user;
+      if (!user) return;
+
+      const isQrOrder =
+        payload?.context?.entryStatus === "q" ||
+        payload?.entryStatus === "q" ||
+        payload?.context?.orderSource === "QR";
+
+      if (isQrOrder) {
+        const tableLabel = payload.context?.orderType === "TAKEAWAY"
+          ? `Takeaway ${payload.context.takeawayNo || ""}`
+          : `${payload.context?.section || ""} • Table ${payload.context?.tableNo || ""}`;
+
+        toast.showToast({
+          message: `📦 New QR Order Placed!`,
+          subtitle: `Order #${payload.orderId} for ${tableLabel}`,
+          type: "success",
+          duration: 5000,
+        });
+      }
+    };
+
     const handleCustomerRequest = (payload: { tableNo: string; type: string }) => {
       const user = useAuthStore.getState().user;
       if (user) {
@@ -42,18 +65,20 @@ function SocketToastListener() {
           section: "SECTION_1", // Default dining section fallback
         });
 
-        // 🔔 Show popup alert on the screen
-        Alert.alert(
-          "🛎️ Service Request",
-          `Table ${payload.tableNo} requested: ${payload.type}`,
-          [{ text: "OK" }],
-          { cancelable: true }
-        );
+        // 🔔 Show slide-down toast notification banner
+        toast.showToast({
+          message: `🛎️ Table ${payload.tableNo} Request`,
+          subtitle: payload.type,
+          type: "warning",
+          duration: 5000,
+        });
       }
     };
 
+    socket.on("new_order", handleNewOrder);
     socket.on("customer_request", handleCustomerRequest);
     return () => {
+      socket.off("new_order", handleNewOrder);
       socket.off("customer_request", handleCustomerRequest);
     };
   }, [toast]);
