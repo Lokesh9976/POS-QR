@@ -3,15 +3,18 @@ const { poolPromise } = require("../config/db");
 async function run() {
   try {
     const pool = await poolPromise;
-    console.log("Checking RestaurantOrderDetailCur columns...");
-    const columns = await pool.request().query(`
-      SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_NAME = 'RestaurantOrderDetailCur'
+    console.log("Checking OPENJSON support...");
+    const res = await pool.request().query(`
+      SELECT * 
+      FROM OPENJSON('[{"id": 1, "name": "Test"}]')
+      WITH (
+        id INT '$.id',
+        name NVARCHAR(50) '$.name'
+      )
     `);
-    console.log("Columns:", columns.recordset.filter(c => ['DishId', 'ProductId'].includes(c.COLUMN_NAME)));
+    console.log("OPENJSON result:", res.recordset);
   } catch (err) {
-    console.error(err);
+    console.error("OPENJSON NOT supported or failed:", err.message);
   } finally {
     process.exit(0);
   }
