@@ -1,5 +1,40 @@
 const { poolPromise } = require("../config/db");
 const http = require("http");
+const jwt = require("jsonwebtoken");
+
+const token = jwt.sign(
+  { userId: "00000000-0000-0000-0000-000000000000", userName: "TestAdmin" },
+  process.env.JWT_SECRET || "9e581b685316ce4d65d29444725ca823b8d3603a7a78c4c8156fd61102478147"
+);
+
+function postRequest(path, payloadObj, useAuth = false) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(payloadObj);
+    const headers = {
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(payload)
+    };
+    if (useAuth) {
+      headers["Authorization"] = "Bearer " + token;
+    }
+    const req = http.request({
+      hostname: "localhost",
+      port: 3000,
+      path: path,
+      method: "POST",
+      headers: headers
+    }, (res) => {
+      let data = "";
+      res.on("data", (chunk) => { data += chunk; });
+      res.on("end", () => {
+        resolve({ statusCode: res.statusCode, data: JSON.parse(data) });
+      });
+    });
+    req.on("error", (reject));
+    req.write(payload);
+    req.end();
+  });
+}
 
 async function run() {
   try {
@@ -39,48 +74,46 @@ async function run() {
       });
     }
 
-    const payload = JSON.stringify({
+    // Step 1: Send Order
+    console.log("1. Sending order with 120 items...");
+    const sendRes = await postRequest("/api/orders/send", {
       tableId: tableId,
       items: items,
       userId: "00000000-0000-0000-0000-000000000000"
     });
-
-    console.log("Sending POST request to /api/orders/send with 120 items...");
-    const req = http.request({
-      hostname: "localhost",
-      port: 3000,
-      path: "/api/orders/send",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(payload)
-      }
-    }, (res) => {
-      let data = "";
-      res.on("data", (chunk) => {
-        data += chunk;
-      });
-      res.on("end", () => {
-        console.log(`HTTP Status: ${res.statusCode}`);
-        console.log("Response:", data);
-        if (res.statusCode === 200) {
-          console.log("🎉 Test passed successfully!");
-        } else {
-          console.error("❌ Test failed!");
-        }
-        process.exit(0);
-      });
-    });
-
-    req.on("error", (err) => {
-      console.error("Connection Error:", err.message);
+    console.log("Send Status:", sendRes.statusCode, "Response:", sendRes.data);
+    if (sendRes.statusCode !== 200) {
+      console.error("❌ Send failed!");
       process.exit(1);
-    });
+    }
 
-    req.write(payload);
-    req.end();
+    // Step 2: Checkout Table
+    console.log("2. Checking out table...");
+    const checkoutRes = await postRequest("/api/orders/checkout", {
+      tableId: tableId
+    });
+    console.log("Checkout Status:", checkoutRes.statusCode, "Response:", checkoutRes.data);
+    if (checkoutRes.statusCode !== 200) {
+      console.error("❌ Checkout failed!");
+      process.exit(1);
+    }
+
+    // Step 3: Settle / Complete Payment
+    console.log("3. Completing order/payment...");
+    const completeRes = await postRequest("/api/orders/complete", {
+      tableId: tableId,
+      userId: "00000000-0000-0000-0000-000000000000"
+    }, true);
+    console.log("Complete Status:", completeRes.statusCode, "Response:", completeRes.data);
+    if (completeRes.statusCode !== 200) {
+      console.error("❌ Settle failed!");
+      process.exit(1);
+    }
+
+    console.log("🎉 All end-to-end tests passed successfully!");
+    process.exit(0);
   } catch (err) {
-    console.error(err);
+    console.error("❌ Test crashed:", err.message);
     process.exit(1);
   }
 }

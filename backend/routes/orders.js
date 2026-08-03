@@ -1699,12 +1699,12 @@ router.post("/cancel", async (req, res) => {
 router.post("/complete", async (req, res) => {
   try {
     const { tableId, userId } = req.body;
-    const cleanId = toGuidOrNull(tableId);
-    if (!cleanId) {
+    const pool = await poolPromise;
+    const cleanId = await getCleanTableId(pool, tableId);
+    if (!toGuidOrNull(cleanId)) {
       console.log(`[Complete] Skipping table release for non-table order: ${tableId}`);
       return res.json({ success: true });
     }
-    const pool = await poolPromise;
 
     // Final atomic update: Close the professional order and release the table
     await pool.request().input("tid", sql.UniqueIdentifier, cleanId).query(`
