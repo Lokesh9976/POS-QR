@@ -301,6 +301,8 @@ type CartState = {
   cartQtyMap: Record<string, Record<string, number>>; // 🚀 PERFORMANCE: contextId -> dishId -> totalQty
   activeSplitItems: any[] | null;
   setActiveSplitItems: (items: any[] | null) => void;
+  splitPartsCount: number | null;
+  setSplitPartsCount: (count: number | null) => void;
 
   setCurrentContext: (contextId: string | null) => void;
 
@@ -378,9 +380,15 @@ export const useCartStore = create<CartState>()(
       cartQtyMap: {},
       _syncAbortControllers: {},
       activeSplitItems: null,
-
-      setCurrentContext: (contextId) => set({ currentContextId: contextId }),
+      splitPartsCount: null,
+ 
+      setCurrentContext: (contextId) => set({ 
+        currentContextId: contextId,
+        activeSplitItems: null,
+        splitPartsCount: null
+      }),
       setActiveSplitItems: (items) => set({ activeSplitItems: items }),
+      setSplitPartsCount: (count) => set({ splitPartsCount: count }),
 
       getCart: () => {
         const { carts, currentContextId } = get();
@@ -880,6 +888,8 @@ export const useCartStore = create<CartState>()(
             tableOrderIds: newTableOrderIds,
             lastLocalUpdate: newLastLocalUpdate,
             lastServerSync: newLastServerSync,
+            activeSplitItems: null,
+            splitPartsCount: null,
           };
         });
       },

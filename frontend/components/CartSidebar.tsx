@@ -53,6 +53,12 @@ const formatSectionGlobal = (sec: string) => {
   return s;
 };
 
+const formatQty = (qty: number): string => {
+  const q = Number(qty) || 0;
+  if (q % 1 === 0) return q.toString();
+  return Number((Math.round(q * 1000) / 1000).toFixed(3)).toString();
+};
+
 const isPhoneDevice = Math.min(Dimensions.get("window").width, Dimensions.get("window").height) < 500;
 
 const styles = StyleSheet.create({
@@ -745,7 +751,7 @@ const CartItemRow = React.memo(
                         isVoided && styles.strikeThrough,
                       ]}
                     >
-                      QTY: {item.qty}
+                      QTY: {formatQty(item.qty)}
                     </Text>
                   </View>
                   {isSent && !isVoided && tableStatus !== "BILL_REQUESTED" && (
@@ -803,7 +809,7 @@ const CartItemRow = React.memo(
                         isPhone && { paddingHorizontal: 12, fontSize: 14 },
                       ]}
                     >
-                      {item.qty}
+                      {formatQty(item.qty)}
                     </Text>
                     <TouchableOpacity
                       style={[

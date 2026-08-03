@@ -48,6 +48,12 @@ import { CustomerDisplaySync } from "../utils/CustomerDisplaySync";
 
 const EMPTY_ARRAY: any[] = [];
 
+const formatQty = (qty: number): string => {
+  const q = Number(qty) || 0;
+  if (q % 1 === 0) return q.toString();
+  return Number((Math.round(q * 1000) / 1000).toFixed(3)).toString();
+};
+
 const formatSection = (sec: string) => {
   if (!sec) return "";
   if (sec === "TAKEAWAY") return "Takeaway";
@@ -1381,29 +1387,41 @@ export default function PaymentScreen() {
             mobileNo: loyaltyPhone || "",
           },
         });
-        // Snapshot context/splitItems before the delayed cleanup
         const ctxSnapshot = context;
         const splitSnapshot = splitItems;
         const orderIdSnapshot = displayOrderId;
+        const isOrderClosedFromResponse = !!result.isOrderClosed;
         // Delay cleanup so the success screen renders before store mutations
         setTimeout(() => {
           if (ctxSnapshot) {
             if (splitSnapshot) {
-              const { carts, currentContextId, setCartItems } =
+              const { splitPartsCount, setSplitPartsCount, setActiveSplitItems } =
                 useCartStore.getState();
-              if (currentContextId) {
-                const updated = (carts[currentContextId] || [])
-                  .map((o: any) => {
-                    const s = splitSnapshot.find(
-                      (si: any) => si.lineItemId === o.lineItemId,
-                    );
-                    return s ? { ...o, qty: o.qty - s.qty } : o;
-                  })
-                  .filter((i: any) => i.qty > 0);
-                setCartItems(currentContextId, updated);
+
+              if (isOrderClosedFromResponse || splitPartsCount === 1) {
+                // All items paid/closed, do full table cleanup
+                setSplitPartsCount(null);
+                setActiveSplitItems(null);
+
+                if (ctxSnapshot.orderType === "DINE_IN") {
+                  clearTable(ctxSnapshot.section!, ctxSnapshot.tableNo!);
+                }
+
+                if (ctxSnapshot.tableId) {
+                  useCartStore.getState().clearTableSession(ctxSnapshot.tableId);
+                  closeActiveOrder(orderIdSnapshot || "");
+                }
+
+                useOrderContextStore.getState().clearOrderContext();
+              } else {
+                // Still has items or parts left: decrement parts count if split by parts
+                if (splitPartsCount && splitPartsCount > 1) {
+                  setSplitPartsCount(splitPartsCount - 1);
+                }
+                setActiveSplitItems(null);
               }
-              useCartStore.getState().setActiveSplitItems(null);
             } else {
+              // Normal payment cleanup
               if (ctxSnapshot.orderType === "DINE_IN") {
                 clearTable(ctxSnapshot.section!, ctxSnapshot.tableNo!);
               }
@@ -2048,7 +2066,7 @@ export default function PaymentScreen() {
         ]}
       >
         <Text style={[styles.itemQty, isVoided && styles.itemVoidedText]}>
-          {item.qty}x
+          {formatQty(item.qty)}x
         </Text>
         <View style={{ flex: 1, paddingRight: 8 }}>
           <View

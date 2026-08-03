@@ -44,7 +44,11 @@ const generateRandomBillId = () => {
 const normalizeReportPayModeSql = (columnName = "sts.PayMode", settlementIdColumn = "sh.SettlementID") => {
   const resolvedPayMode = `COALESCE(${columnName}, (
     SELECT TOP 1 pm2.PayMode 
-    FROM PaymentDetailCur pd2 
+    FROM (
+      SELECT Paymode, RestaurantBillId FROM PaymentDetailCur
+      UNION ALL
+      SELECT Paymode, RestaurantBillId FROM PaymentDetail
+    ) pd2 
     JOIN Paymode pm2 ON pd2.Paymode = pm2.Position 
     WHERE pd2.RestaurantBillId = ${settlementIdColumn}
   ))`;
@@ -1432,6 +1436,8 @@ router.post("/save", async (req, res) => {
       rewardMemberId
     } = req.body;
 
+    const isSplitParsed = (isSplit === true || isSplit === "true" || isSplit === 1 || isSplit === "1");
+
     const validationError = validateSalePayload({ totalAmount, paymentMethod, items, payments });
     if (validationError) {
       console.warn(`[SAVE SALE] Validation failed: ${validationError}`);
@@ -1451,16 +1457,21 @@ router.post("/save", async (req, res) => {
     }
 
     // 2. Fallback check for non-split payments using orderId
-    if (orderId && !isSplit) {
+    if (orderId && !isSplitParsed) {
       const existingCheck = await pool.request()
         .input("OrderId", sql.NVarChar(100), orderId)
         .query(`
           SELECT TOP 1 sh.SettlementID, sh.BillNo 
           FROM SettlementHeader sh
           LEFT JOIN RestaurantInvoice ri ON sh.SettlementID = ri.RestaurantBillId
-          WHERE sh.BillNo = @OrderId 
+          WHERE (sh.BillNo = @OrderId 
              OR (TRY_CAST(@OrderId AS UNIQUEIDENTIFIER) IS NOT NULL AND ri.OrderId = TRY_CAST(@OrderId AS UNIQUEIDENTIFIER))
-             OR ri.OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrder WHERE OrderNumber = @OrderId)
+             OR ri.OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrder WHERE OrderNumber = @OrderId))
+            AND NOT EXISTS (
+              SELECT 1 FROM RestaurantOrderCur roc 
+              WHERE (roc.OrderNumber = @OrderId OR roc.OrderId = ri.OrderId)
+                AND roc.isOrderClosed = 0
+            )
         `);
       if (existingCheck.recordset.length > 0) {
         const existing = existingCheck.recordset[0];
@@ -1477,6 +1488,7 @@ router.post("/save", async (req, res) => {
     let customerType = null;
     let customerRecord = null;
     let finalBillNo = null;
+    let hasRemaining = false;
 
     await runInTransaction(async (transaction) => {
       if (clientSettlementId) {
@@ -1649,18 +1661,18 @@ router.post("/save", async (req, res) => {
         orderCustomerName = guidRes.recordset[0]?.CustomerName;
         console.log(`[SAVE SALE] Master Sync -> GUID OrderId: ${guidOrderId}, orderPax: ${orderPax}, orderCustomerName: ${orderCustomerName}`);
 
-    // Split Bill unique bill/invoice suffix generator
+     // Split Bill unique bill/invoice suffix generator
     finalBillNo = displayOrderId;
     let splitIndexValue = null;
-    if (isSplit) {
-      const splitCountResult = await transaction.request()
-        .input("OrderId", sql.UniqueIdentifier, guidOrderId)
-        .query("SELECT COUNT(*) as count FROM RestaurantInvoice WHERE OrderId = @OrderId");
-      const splitCount = splitCountResult.recordset[0].count + 1;
-      finalBillNo = `${displayOrderId}-S${splitCount}`;
-      splitIndexValue = splitCount;
-    }
-    console.log(`[SAVE SALE] Final Bill No: ${finalBillNo} (isSplit: ${isSplit || false}, index: ${splitIndexValue || "none"})`);
+    if (isSplitParsed) {
+       const splitCountResult = await transaction.request()
+         .input("OrderId", sql.UniqueIdentifier, guidOrderId)
+         .query("SELECT COUNT(*) as count FROM RestaurantInvoice WHERE OrderId = @OrderId");
+       const splitCount = splitCountResult.recordset[0].count + 1;
+       finalBillNo = `${displayOrderId}-S${splitCount}`;
+       splitIndexValue = splitCount;
+     }
+     console.log(`[SAVE SALE] Final Bill No: ${finalBillNo} (isSplit: ${isSplitParsed || false}, index: ${splitIndexValue || "none"})`);
 
     // Merge history count retriever
     const mergeCountResult = await transaction.request()
@@ -1874,7 +1886,7 @@ router.post("/save", async (req, res) => {
           insertReq.input(`SongName_${idx}`, sql.NVarChar(255), item.songName || item.SongName || "");
           insertReq.input(`CategoryName_${idx}`, sql.NVarChar(255), meta.CategoryName || item.categoryName || "Unmapped");
           insertReq.input(`SubCategoryName_${idx}`, sql.NVarChar(255), meta.DishGroupName || "Unmapped");
-          insertReq.input(`Qty_${idx}`, sql.Int, item.qty || 1);
+          insertReq.input(`Qty_${idx}`, sql.Decimal(18, 3), item.qty || 1);
           insertReq.input(`Price_${idx}`, sql.Decimal(18, 2), item.price || 0);
           insertReq.input(`ItemDiscountAmount_${idx}`, sql.Decimal(18, 2), Number(item.discountAmount) || null);
           insertReq.input(`ItemDiscountType_${idx}`, sql.NVarChar(50), item.discountType || (Number(item.discountAmount) > 0 ? "percentage" : null));
@@ -1919,7 +1931,7 @@ router.post("/save", async (req, res) => {
               .input("dishId", sql.UniqueIdentifier, v.DishId)
               .input("dishName", sql.NVarChar(255), v.DishName)
               .input("songName", sql.NVarChar(255), v.SongName || "")
-              .input("qty", sql.Int, v.Quantity)
+              .input("qty", sql.Decimal(18, 3), v.Quantity)
               .input("price", sql.Decimal(18, 2), v.PricePerUnit)
               .input("catId", sql.UniqueIdentifier, v.CategoryId)
               .input("catName", sql.NVarChar(255), v.CategoryName)
@@ -2111,10 +2123,10 @@ router.post("/save", async (req, res) => {
       }
 
       // ================= SPLIT BILL QUANTITY SUBTRACTION =================
-      let hasRemaining = false;
+      hasRemaining = false;
       let remainingTotal = 0;
 
-      if (isSplit && Array.isArray(items)) {
+      if (isSplitParsed && Array.isArray(items)) {
         console.log(`[SAVE SALE] Processing Split Bill subtraction for order ${displayOrderId}...`);
         for (const item of items) {
           const detailId = toGuidOrNull(item.lineItemId);
@@ -2127,9 +2139,46 @@ router.post("/save", async (req, res) => {
               .input("detailId", sql.UniqueIdentifier, detailId)
               .query("SELECT Quantity FROM RestaurantOrderDetailCur WITH (UPDLOCK) WHERE OrderDetailId = @detailId");
               
-            if (qtyCheck.recordset.length === 0 || qtyCheck.recordset[0].Quantity < qtyPaid) {
+            const dbQty = qtyCheck.recordset.length > 0 ? Number(qtyCheck.recordset[0].Quantity) || 0 : 0;
+            const dbQtyRounded = Math.round(dbQty * 10000) / 10000;
+            const paidQtyRounded = Math.round(qtyPaid * 10000) / 10000;
+              
+            if (qtyCheck.recordset.length === 0 || dbQtyRounded < paidQtyRounded) {
                throw new Error(`Insufficient quantity available for split item ${item.name}. Transaction aborted.`);
             }
+
+            // Archive the paid quantity to RestaurantOrderDetail before subtracting/deleting
+            const newDetailIdResult = await transaction.request().query("SELECT NEWID() AS id");
+            const newDetailId = newDetailIdResult.recordset[0].id;
+            
+            await transaction.request()
+              .input("detailId", sql.UniqueIdentifier, detailId)
+              .input("newDetailId", sql.UniqueIdentifier, newDetailId)
+              .input("qtyPaid", sql.Decimal(18, 2), qtyPaid)
+              .query(`
+                INSERT INTO RestaurantOrderDetail (
+                  OrderDetailId, OrderId, DishId, Description, DishName, Quantity, PricePerUnit, 
+                  ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, 
+                  BusinessUnitId, OrderDateTime, Spicy, Salt, Oil, Sugar, Remarks, 
+                  OrderConfirmQty, VoidReason, DiscountAmount, DiscountType, isTakeAway, ManualDiscountAmount, ServiceCharge, ComboDetailsJSON, start_date
+                )
+                SELECT 
+                  @newDetailId, OrderId, DishId, Description, DishName, @qtyPaid, PricePerUnit, 
+                  @qtyPaid * PricePerUnit, @qtyPaid * PricePerUnit, @qtyPaid * PricePerUnit, 
+                  StatusCode, CreatedBy, CreatedOn, 
+                  BusinessUnitId, OrderDateTime, Spicy, Salt, Oil, Sugar, Remarks, 
+                  @qtyPaid, VoidReason, 
+                  ISNULL(DiscountAmount, 0), ISNULL(DiscountType, 'fixed'),
+                  isTakeAway, ISNULL(DiscountAmount, 0), ServiceCharge, ComboDetailsJSON, start_date
+                FROM RestaurantOrderDetailCur
+                WHERE OrderDetailId = @detailId;
+
+                -- Also copy its modifiers
+                INSERT INTO Restaurantmodifierdetail (OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, Description, CreatedBy, CreatedOn, start_date)
+                SELECT @newDetailId, OrderId, DishId, ModifierId, @qtyPaid, Amount, ModifierName, ModifierName, CreatedBy, CreatedOn, start_date
+                FROM RestaurantmodifierdetailCur
+                WHERE OrderDetailId = @detailId;
+              `);
 
             // Subtract quantity from detail record
             await transaction.request()
@@ -2203,7 +2252,7 @@ router.post("/save", async (req, res) => {
       }
 
       // 🚀 PROFESSIONAL ARCHIVE: Move from Cur to History (Only run if not split, or if split has no remaining items)
-      if (displayOrderId && (!isSplit || !hasRemaining)) {
+      if (displayOrderId && (!isSplitParsed || !hasRemaining)) {
         try {
           await transaction.request()
             .input("orderNo", sql.NVarChar(50), displayOrderId)
@@ -2219,6 +2268,7 @@ router.post("/save", async (req, res) => {
             .input("isTakeaway", sql.Bit, (orderType === "TAKEAWAY" || !tableId || tableId === "undefined" || tableId === "null" || String(tableId).startsWith("TAKEAWAY")) ? 1 : 0)
             .input("ServiceCharge", sql.Decimal(18, 2), req.body.serviceCharge || 0)
             .input("TakeawayCharge", sql.Decimal(18, 2), req.body.takeawayCharge || 0)
+            .input("isSplit", sql.Bit, isSplitParsed ? 1 : 0)
             .query(`
               DECLARE @Section INT = 4;
               DECLARE @PriorityCode INT = NULL;
@@ -2303,34 +2353,35 @@ router.post("/save", async (req, res) => {
                  WHERE omh.ParentOrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo)
                    AND NOT EXISTS (SELECT 1 FROM RestaurantOrder ro WHERE ro.OrderId = r.OrderId);
               END
-
-              -- Move Details (History) with safety for Discount columns
-              -- NOTE: isTakeAway comes from the ORDER HEADER (RestaurantOrderCur), not the detail row,
-              --       because detail rows always store 0 for dine-in. The header was already updated above.
-              INSERT INTO RestaurantOrderDetail (
-                OrderDetailId, OrderId, DishId, Description, DishName, Quantity, PricePerUnit, 
-                ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, 
-                BusinessUnitId, OrderDateTime, Spicy, Salt, Oil, Sugar, Remarks, 
-                OrderConfirmQty, VoidReason, DiscountAmount, DiscountType, isTakeAway, ManualDiscountAmount, ServiceCharge, ComboDetailsJSON, start_date
-              )
-              SELECT 
-                d.OrderDetailId, d.OrderId, d.DishId, d.Description, d.DishName, d.Quantity, d.PricePerUnit, 
-                d.ActualAmount, d.TotalDetailLineAmount,
-                ISNULL(d.BaseAmount, d.PricePerUnit * d.Quantity),
-                d.StatusCode, d.CreatedBy, d.CreatedOn, 
-                d.BusinessUnitId, d.OrderDateTime, d.Spicy, d.Salt, d.Oil, d.Sugar, d.Remarks, 
-                d.OrderConfirmQty, d.VoidReason, 
-                ISNULL(d.DiscountAmount, 0), ISNULL(d.DiscountType, 'fixed'),
-                ISNULL(h.IsTakeAway, ISNULL(d.isTakeAway, 0)),
-                ISNULL(d.DiscountAmount, 0), d.ServiceCharge, d.ComboDetailsJSON, d.start_date
-              FROM RestaurantOrderDetailCur d
-              INNER JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId
-              WHERE h.OrderNumber = @orderNo;
-
-              -- Move Modifiers (History)
-              INSERT INTO Restaurantmodifierdetail (OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, Description, CreatedBy, CreatedOn, start_date)
-              SELECT OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, ModifierName, CreatedBy, CreatedOn, start_date
-              FROM RestaurantmodifierdetailCur WHERE OrderId IN (SELECT OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo);
+ 
+              -- Move Details (History) only if not split (split details are archived incrementally)
+              IF @isSplit = 0
+              BEGIN
+                INSERT INTO RestaurantOrderDetail (
+                  OrderDetailId, OrderId, DishId, Description, DishName, Quantity, PricePerUnit, 
+                  ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, 
+                  BusinessUnitId, OrderDateTime, Spicy, Salt, Oil, Sugar, Remarks, 
+                  OrderConfirmQty, VoidReason, DiscountAmount, DiscountType, isTakeAway, ManualDiscountAmount, ServiceCharge, ComboDetailsJSON, start_date
+                )
+                SELECT 
+                  d.OrderDetailId, d.OrderId, d.DishId, d.Description, d.DishName, d.Quantity, d.PricePerUnit, 
+                  d.ActualAmount, d.TotalDetailLineAmount,
+                  ISNULL(d.BaseAmount, d.PricePerUnit * d.Quantity),
+                  d.StatusCode, d.CreatedBy, d.CreatedOn, 
+                  d.BusinessUnitId, d.OrderDateTime, d.Spicy, d.Salt, d.Oil, d.Sugar, d.Remarks, 
+                  d.OrderConfirmQty, d.VoidReason, 
+                  ISNULL(d.DiscountAmount, 0), ISNULL(d.DiscountType, 'fixed'),
+                  ISNULL(h.IsTakeAway, ISNULL(d.isTakeAway, 0)),
+                  ISNULL(d.DiscountAmount, 0), d.ServiceCharge, d.ComboDetailsJSON, d.start_date
+                FROM RestaurantOrderDetailCur d
+                INNER JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId
+                WHERE h.OrderNumber = @orderNo;
+ 
+                -- Move Modifiers (History)
+                INSERT INTO Restaurantmodifierdetail (OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, Description, CreatedBy, CreatedOn, start_date)
+                SELECT OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, ModifierName, CreatedBy, CreatedOn, start_date
+                FROM RestaurantmodifierdetailCur WHERE OrderId IN (SELECT OrderId FROM RestaurantOrderCur WHERE OrderNumber = @orderNo);
+              END
             `);
           console.log(`[SAVE SALE] Professional Archive complete for ${displayOrderId}`);
         } catch (archiveErr) {
@@ -2343,7 +2394,7 @@ router.post("/save", async (req, res) => {
         const cleanTableId = String(tableId).replace(/^\{|\}$/g, "").trim();
         const validTableGuid = toGuidOrNull(cleanTableId);
         
-        if (isSplit && hasRemaining) {
+        if (isSplitParsed && hasRemaining) {
           console.log(`[SAVE SALE] Split bill partial payment. Remaining Total: ${remainingTotal}`);
           if (validTableGuid) {
             // Partially paid: DO NOT clear table status. Just update total.
@@ -2591,7 +2642,8 @@ router.post("/save", async (req, res) => {
       billNo: finalBillNo || displayOrderId,
       orderId: displayOrderId,
       rewardPointsEarned,
-      memberRewardBalance
+      memberRewardBalance,
+      isOrderClosed: !hasRemaining
     });
   } catch (err) {
     console.error("SAVE SALE ERROR:", err);

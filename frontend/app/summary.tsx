@@ -70,6 +70,12 @@ const parsePhone = (fullPhone: string) => {
   return { country: COUNTRIES[0], rest: clean };
 };
 
+const formatQty = (qty: number): string => {
+  const q = Number(qty) || 0;
+  if (q % 1 === 0) return q.toString();
+  return Number((Math.round(q * 1000) / 1000).toFixed(3)).toString();
+};
+
 const formatSection = (sec: string) => {
   if (!sec) return "";
   if (sec === "TAKEAWAY") return "Takeaway";
@@ -429,7 +435,10 @@ export default function SummaryScreen() {
   useEffect(() => {
     // Only show loading briefly — don't block forever
     const t = setTimeout(() => setOrderLoadTimeout(false), 2000);
-    useCartStore.getState().setActiveSplitItems(null);
+    const { splitPartsCount } = useCartStore.getState();
+    if (!splitPartsCount) {
+      useCartStore.getState().setActiveSplitItems(null);
+    }
     return () => clearTimeout(t);
   }, []);
 
@@ -454,6 +463,11 @@ export default function SummaryScreen() {
   useEffect(() => {
     if (displayOrderId && isFocused) {
       const token = useAuthStore.getState().token;
+
+      if (context?.tableId) {
+        useCartStore.getState().fetchCartFromDB(context.tableId, true).catch(() => {});
+      }
+
       fetch(`${API_URL}/api/orders/${displayOrderId}/sc-override`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
@@ -483,7 +497,23 @@ export default function SummaryScreen() {
         })
         .catch(() => {});
     }
-  }, [displayOrderId, isFocused]);
+  }, [displayOrderId, isFocused, context]);
+
+  // Synchronize activeSplitItems dynamically based on current cart and splitPartsCount
+  useEffect(() => {
+    if (isFocused && context && cart && cart.length > 0) {
+      const { splitPartsCount, setActiveSplitItems } = useCartStore.getState();
+      if (splitPartsCount && splitPartsCount > 1) {
+        const nextSplit = cart.map((item: any) => ({
+          ...item,
+          qty: Math.round((item.qty / splitPartsCount) * 1000) / 1000,
+        }));
+        setActiveSplitItems(nextSplit);
+      } else {
+        setActiveSplitItems(null);
+      }
+    }
+  }, [cart, isFocused, context]);
 
   useEffect(() => {
 
@@ -1658,7 +1688,7 @@ export default function SummaryScreen() {
                     }
                   ]}>
                   <View style={styles.qtyBadge}>
-                    <Text style={styles.qtyBadgeText}>{item.qty}</Text>
+                    <Text style={styles.qtyBadgeText}>{formatQty(item.qty)}</Text>
                   </View>
 
                   <View style={styles.rowContent}>
@@ -3587,9 +3617,14 @@ export default function SummaryScreen() {
                       ]
                     : cart.map((item: any) => ({
                         ...item,
-                        qty: item.qty / partCount,
+                        qty: Math.round((item.qty / partCount) * 1000) / 1000,
                       }));
 
+                  if (splitType === "parts") {
+                    useCartStore.getState().setSplitPartsCount(partCount);
+                  } else {
+                    useCartStore.getState().setSplitPartsCount(null);
+                  }
                   useCartStore.getState().setActiveSplitItems(selectedItems);
                   setShowSplitModal(false);
                   router.push({
@@ -3672,7 +3707,7 @@ export default function SummaryScreen() {
                       <Text style={styles.mergeSub} numberOfLines={1}>
                         {item.items
                           .filter((i: any) => i.status !== "VOIDED")
-                          .map((i: any) => `${i.name} x${i.qty}`)
+                          .map((i: any) => `${i.name} x${formatQty(i.qty)}`)
                           .join(", ") || "No items"}
                       </Text>
                       <Text style={{ color: Theme.textMuted, fontSize: 11, fontFamily: Fonts.regular }}>

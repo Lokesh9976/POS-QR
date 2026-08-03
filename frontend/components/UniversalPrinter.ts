@@ -167,6 +167,11 @@ class UniversalPrinter {
     const isIp = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(cleanIp);
     if (!isIp) return false;
 
+    // Avoid HTTP requests to raw TCP port 9100 as the printer will print the HTTP headers!
+    if (port === 9100) {
+      return true;
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 

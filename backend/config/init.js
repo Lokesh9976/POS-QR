@@ -27,7 +27,7 @@ async function initDB(pool) {
               [SubCategoryId] [uniqueidentifier] NULL,
               [CategoryId] [uniqueidentifier] NULL,
               [DishName] [nvarchar](255) NULL,
-              [Qty] [int] NULL,
+              [Qty] [decimal](18, 3) NULL,
               [Price] [decimal](18, 2) NULL,
               [OrderDateTime] [datetime] NULL
           ) ON [PRIMARY]
@@ -195,6 +195,18 @@ async function initDB(pool) {
     await runQuery("SettlementItemDetail - Sugar", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[SettlementItemDetail]') AND name = 'Sugar') ALTER TABLE [dbo].[SettlementItemDetail] ADD Sugar NVARCHAR(50) NULL");
     await runQuery("SettlementItemDetail - OrderDetailId", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[SettlementItemDetail]') AND name = 'OrderDetailId') ALTER TABLE [dbo].[SettlementItemDetail] ADD OrderDetailId UNIQUEIDENTIFIER NULL");
     await runQuery("SettlementItemDetail - SongName", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[SettlementItemDetail]') AND name = 'SongName') ALTER TABLE [dbo].[SettlementItemDetail] ADD SongName NVARCHAR(255) NULL");
+    await runQuery("SettlementItemDetail - Decimal Qty Migration", `
+      IF EXISTS (
+        SELECT 1 FROM sys.columns c
+        JOIN sys.types t ON c.system_type_id = t.system_type_id
+        WHERE c.object_id = OBJECT_ID(N'[dbo].[SettlementItemDetail]')
+          AND c.name = 'Qty'
+          AND t.name = 'int'
+      )
+      BEGIN
+          ALTER TABLE [dbo].[SettlementItemDetail] ALTER COLUMN [Qty] DECIMAL(18, 3) NULL;
+      END
+    `);
 
     // 5. CancelRemarksMaster
     await runQuery("Create CancelRemarksMaster", `

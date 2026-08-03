@@ -20,10 +20,10 @@ const localIP = getLocalBackendIP();
 
 export const API_URL = __DEV__
   ? `http://${localIP}:3000`
-  : (Platform.OS === "web" && typeof window !== "undefined"
-      ? `${window.location.protocol}//${window.location.hostname}${window.location.port ? `:${window.location.port}` : ""}`
-      : (process.env.EXPO_PUBLIC_API_URL ??
-        "https://pos-qr-production-5142.up.railway.app"));
+  : (process.env.EXPO_PUBLIC_API_URL ??
+     (Platform.OS === "web" && typeof window !== "undefined"
+       ? `${window.location.protocol}//${window.location.hostname}${window.location.port ? `:${window.location.port}` : ""}`
+       : "https://pos-qr-production-5142.up.railway.app"));
 
 
 if (__DEV__) {

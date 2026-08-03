@@ -52,6 +52,25 @@ const toGuidOrNull = (value) => {
     : null;
 };
 
+const getCleanTableId = async (pool, tableId) => {
+  if (!tableId) return null;
+  const cleanId = String(tableId).replace(/^\{|\}$/g, "").trim();
+  const guid = toGuidOrNull(cleanId);
+  if (guid) return guid;
+  try {
+    const res = await pool.request()
+      .input("num", sql.VarChar(20), cleanId)
+      .query("SELECT TableId FROM TableMaster WHERE TableNumber = @num");
+    if (res.recordset.length > 0) {
+      return String(res.recordset[0].TableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
+    }
+  } catch (err) {
+    console.error("Failed to resolve TableId for table number:", cleanId, err.message);
+  }
+  return cleanId;
+};
+
+
 function resolveItemTextField(item = {}, keys = []) {
   const itemKeys = Object.keys(item || {});
   for (const k of keys) {
@@ -426,6 +445,15 @@ async function syncToProfessionalTables(
           .input("destOrderNo", sql.NVarChar(50), cleanOrderNo)
           .input("srcOrderId", sql.UniqueIdentifier, ghost.OrderId)
           .query(`
+            -- Merge quantities for items that exist in both destination and source orders (match by DishId + StatusCode)
+            UPDATE x
+            SET x.Quantity = x.Quantity + d.Quantity,
+                x.ModifiedOn = GETDATE()
+            FROM RestaurantOrderDetailCur x
+            JOIN RestaurantOrderDetailCur d ON x.DishId = d.DishId AND x.StatusCode = d.StatusCode
+            WHERE x.OrderId = @destOrderId
+              AND d.OrderId = @srcOrderId;
+
             -- Move items that don't already exist in the destination order (match by DishId + StatusCode)
             UPDATE d
             SET d.OrderId = @destOrderId,
@@ -440,7 +468,7 @@ async function syncToProfessionalTables(
                   AND x.StatusCode = d.StatusCode
               );
 
-            -- For items that DO already exist in destination, just remove duplicates from ghost
+            -- For items that have been merged/moved, remove them from ghost
             DELETE FROM RestaurantOrderDetailCur
             WHERE OrderId = @srcOrderId;
           `);
@@ -486,7 +514,7 @@ async function syncToProfessionalTables(
     const cleanProdId = String(item.id || item.ProductId || DEFAULT_GUID)
       .replace(/^\{|\}$/g, "")
       .trim();
-    const finalProdId = cleanProdId.length < 10 ? DEFAULT_GUID : cleanProdId;
+    const finalProdId = toGuidOrNull(cleanProdId) || DEFAULT_GUID;
     const lineItemId =
       item.lineItemId && item.lineItemId.length > 10
         ? item.lineItemId
@@ -572,7 +600,7 @@ async function syncToProfessionalTables(
 
     itemRequest.input(p_id, sql.UniqueIdentifier, lineItemId);
     itemRequest.input(p_dish, sql.UniqueIdentifier, finalProdId);
-    itemRequest.input(p_qty, sql.Int, item.qty || 1);
+    itemRequest.input(p_qty, sql.Decimal(18, 3), item.qty || 1);
     itemRequest.input(p_cost, sql.Decimal(18, 2), resolvedUnitPrice);
     itemRequest.input(p_status, sql.Int, currentStatusCode);
     itemRequest.input(p_name, sql.NVarChar(200), dishName);
@@ -966,9 +994,7 @@ router.post("/save-cart", async (req, res) => {
     const activeStartDate = activeDayRes.recordset[0].StartDate;
     const formattedStartDate = activeStartDate instanceof Date ? activeStartDate.toISOString().split("T")[0] : activeStartDate;
 
-    const cleanId = String(tableId)
-      .replace(/^\{|\}$/g, "")
-      .trim();
+    const cleanId = await getCleanTableId(pool, tableId);
     const now = Date.now();
 
     console.log(
@@ -1127,9 +1153,7 @@ router.post("/send", async (req, res) => {
   try {
     const { tableId, orderId, items, userId, discountAmount, discountRemarks } = req.body;
     const pool = await poolPromise;
-    const cleanId = String(tableId)
-      .replace(/^\{|\}$/g, "")
-      .trim();
+    const cleanId = await getCleanTableId(pool, tableId);
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -1358,13 +1382,15 @@ router.get("/cart/:tableId", async (req, res) => {
     if (
       !tableId ||
       tableId === "undefined" ||
-      tableId === "null" ||
-      tableId.length < 5
+      tableId === "null"
     ) {
       return res.json({ items: [], currentOrderId: null });
     }
     const pool = await poolPromise;
-    const cleanId = tableId.replace(/^\{|\}$/g, "").trim();
+    const cleanId = await getCleanTableId(pool, tableId);
+    if (!cleanId || cleanId.length < 5) {
+      return res.json({ items: [], currentOrderId: null });
+    }
 
     // Get table info (TableNumber + CurrentOrderId)
     const tableInfo = await pool
@@ -1767,12 +1793,12 @@ router.post("/checkout", async (req, res) => {
 
   const attemptCheckout = async () => {
     const { tableId } = req.body;
-    const cleanId = toGuidOrNull(tableId);
-    if (!cleanId) {
+    const pool = await poolPromise;
+    const cleanId = await getCleanTableId(pool, tableId);
+    if (!toGuidOrNull(cleanId)) {
       console.log(`[Checkout] Skipping table updates for non-table order: ${tableId}`);
       return res.json({ success: true, tableNo: "TAKEAWAY", section: "TAKEAWAY" });
     }
-    const pool = await poolPromise;
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
