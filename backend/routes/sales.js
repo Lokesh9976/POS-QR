@@ -2131,83 +2131,95 @@ router.post("/save", async (req, res) => {
       let remainingTotal = 0;
 
       if (isSplitParsed && Array.isArray(items)) {
-        console.log(`[SAVE SALE] Processing Split Bill subtraction for order ${displayOrderId}...`);
-        for (const item of items) {
-          const detailId = toGuidOrNull(item.lineItemId);
-          if (detailId) {
-            const qtyPaid = Number(item.qty) || 0;
-            console.log(`[SAVE SALE] Split subtract: Item ${item.name} (${detailId}) PaidQty=${qtyPaid}`);
-            
-            // Concurrency Check: Ensure sufficient quantity (prevents double-tap issues)
-            const qtyCheck = await transaction.request()
-              .input("detailId", sql.UniqueIdentifier, detailId)
-              .query("SELECT Quantity FROM RestaurantOrderDetailCur WITH (UPDLOCK) WHERE OrderDetailId = @detailId");
-              
-            const dbQty = qtyCheck.recordset.length > 0 ? Number(qtyCheck.recordset[0].Quantity) || 0 : 0;
-            const dbQtyRounded = Math.round(dbQty * 10000) / 10000;
-            const paidQtyRounded = Math.round(qtyPaid * 10000) / 10000;
-              
-            if (qtyCheck.recordset.length === 0 || dbQtyRounded < paidQtyRounded) {
-               throw new Error(`Insufficient quantity available for split item ${item.name}. Transaction aborted.`);
-            }
+        console.log(`[SAVE SALE] Processing Split Bill subtraction for order ${displayOrderId} in batch...`);
+        const itemsToSplit = items.map(item => ({
+          lineItemId: item.lineItemId,
+          qty: item.qty
+        }));
+        const itemsJSON = JSON.stringify(itemsToSplit);
 
-            // Archive the paid quantity to RestaurantOrderDetail before subtracting/deleting
-            const newDetailIdResult = await transaction.request().query("SELECT NEWID() AS id");
-            const newDetailId = newDetailIdResult.recordset[0].id;
-            
-            await transaction.request()
-              .input("detailId", sql.UniqueIdentifier, detailId)
-              .input("newDetailId", sql.UniqueIdentifier, newDetailId)
-              .input("qtyPaid", sql.Decimal(18, 2), qtyPaid)
-              .query(`
-                INSERT INTO RestaurantOrderDetail (
-                  OrderDetailId, OrderId, DishId, Description, DishName, Quantity, PricePerUnit, 
-                  ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, 
-                  BusinessUnitId, OrderDateTime, Spicy, Salt, Oil, Sugar, Remarks, 
-                  OrderConfirmQty, VoidReason, DiscountAmount, DiscountType, isTakeAway, ManualDiscountAmount, ServiceCharge, ComboDetailsJSON, start_date
-                )
-                SELECT 
-                  @newDetailId, OrderId, DishId, Description, DishName, @qtyPaid, PricePerUnit, 
-                  @qtyPaid * PricePerUnit, @qtyPaid * PricePerUnit, @qtyPaid * PricePerUnit, 
-                  StatusCode, CreatedBy, CreatedOn, 
-                  BusinessUnitId, OrderDateTime, Spicy, Salt, Oil, Sugar, Remarks, 
-                  @qtyPaid, VoidReason, 
-                  ISNULL(DiscountAmount, 0), ISNULL(DiscountType, 'fixed'),
-                  isTakeAway, ISNULL(DiscountAmount, 0), ServiceCharge, ComboDetailsJSON, start_date
-                FROM RestaurantOrderDetailCur
-                WHERE OrderDetailId = @detailId;
+        await transaction.request()
+          .input("ItemsJSON", sql.NVarChar(sql.MAX), itemsJSON)
+          .query(`
+            DECLARE @SplitItems TABLE (
+                DetailId UNIQUEIDENTIFIER,
+                QtyPaid DECIMAL(18, 4)
+            );
 
-                -- Also copy its modifiers
-                INSERT INTO Restaurantmodifierdetail (OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, Description, CreatedBy, CreatedOn, start_date)
-                SELECT @newDetailId, OrderId, DishId, ModifierId, @qtyPaid, Amount, ModifierName, ModifierName, CreatedBy, CreatedOn, start_date
-                FROM RestaurantmodifierdetailCur
-                WHERE OrderDetailId = @detailId;
-              `);
+            INSERT INTO @SplitItems (DetailId, QtyPaid)
+            SELECT TRY_CAST(lineItemId AS UNIQUEIDENTIFIER), TRY_CAST(qty AS DECIMAL(18, 4))
+            FROM OPENJSON(@ItemsJSON)
+            WITH (
+                lineItemId NVARCHAR(50),
+                qty NVARCHAR(50)
+            )
+            WHERE lineItemId IS NOT NULL;
 
-            // Subtract quantity from detail record
-            await transaction.request()
-              .input("detailId", sql.UniqueIdentifier, detailId)
-              .input("qtyPaid", sql.Decimal(18, 2), qtyPaid)
-              .query(`
-                UPDATE RestaurantOrderDetailCur
-                SET Quantity = Quantity - @qtyPaid,
-                    ActualAmount = (Quantity - @qtyPaid) * PricePerUnit,
-                    TotalDetailLineAmount = (Quantity - @qtyPaid) * PricePerUnit,
-                    BaseAmount = (Quantity - @qtyPaid) * PricePerUnit
-                WHERE OrderDetailId = @detailId
-              `);
+            -- 1. Concurrency Check: Ensure sufficient quantity
+            IF EXISTS (
+                SELECT 1 
+                FROM @SplitItems s
+                JOIN RestaurantOrderDetailCur cur ON s.DetailId = cur.OrderDetailId
+                WHERE cur.Quantity < s.QtyPaid
+            )
+            BEGIN
+                THROW 50001, 'Insufficient quantity available for split items.', 1;
+            END;
 
-            // If quantity <= 0, delete modifiers and item
-            await transaction.request()
-              .input("detailId", sql.UniqueIdentifier, detailId)
-              .query(`
-                DELETE FROM RestaurantmodifierdetailCur WHERE OrderDetailId = @detailId AND @detailId IN (
-                  SELECT OrderDetailId FROM RestaurantOrderDetailCur WHERE OrderDetailId = @detailId AND Quantity <= 0
-                );
-                DELETE FROM RestaurantOrderDetailCur WHERE OrderDetailId = @detailId AND Quantity <= 0;
-              `);
-          }
-        }
+            -- 2. Create Map of Old vs New Detail IDs
+            DECLARE @Map TABLE (
+                OldDetailId UNIQUEIDENTIFIER,
+                NewDetailId UNIQUEIDENTIFIER,
+                QtyPaid DECIMAL(18, 4)
+            );
+
+            INSERT INTO @Map (OldDetailId, NewDetailId, QtyPaid)
+            SELECT s.DetailId, NEWID(), s.QtyPaid
+            FROM @SplitItems s;
+
+            -- 3. Archive paid items to RestaurantOrderDetail
+            INSERT INTO RestaurantOrderDetail (
+              OrderDetailId, OrderId, DishId, Description, DishName, Quantity, PricePerUnit, 
+              ActualAmount, TotalDetailLineAmount, BaseAmount, StatusCode, CreatedBy, CreatedOn, 
+              BusinessUnitId, OrderDateTime, Spicy, Salt, Oil, Sugar, Remarks, 
+              OrderConfirmQty, VoidReason, DiscountAmount, DiscountType, isTakeAway, ManualDiscountAmount, ServiceCharge, ComboDetailsJSON, start_date
+            )
+            SELECT 
+              m.NewDetailId, cur.OrderId, cur.DishId, cur.Description, cur.DishName, m.QtyPaid, cur.PricePerUnit, 
+              m.QtyPaid * cur.PricePerUnit, m.QtyPaid * cur.PricePerUnit, m.QtyPaid * cur.PricePerUnit, 
+              cur.StatusCode, cur.CreatedBy, cur.CreatedOn, 
+              cur.BusinessUnitId, cur.OrderDateTime, cur.Spicy, cur.Salt, cur.Oil, cur.Sugar, cur.Remarks, 
+              m.QtyPaid, cur.VoidReason, 
+              ISNULL(cur.DiscountAmount, 0), ISNULL(cur.DiscountType, 'fixed'),
+              cur.isTakeAway, ISNULL(cur.DiscountAmount, 0), cur.ServiceCharge, cur.ComboDetailsJSON, cur.start_date
+            FROM RestaurantOrderDetailCur cur
+            JOIN @Map m ON cur.OrderDetailId = m.OldDetailId;
+
+            -- 4. Archive modifiers
+            INSERT INTO Restaurantmodifierdetail (OrderDetailId, OrderId, DishId, ModifierId, Quantity, Amount, ModifierName, Description, CreatedBy, CreatedOn, start_date)
+            SELECT m.NewDetailId, mod.OrderId, mod.DishId, mod.ModifierId, m.QtyPaid, mod.Amount, mod.ModifierName, mod.ModifierName, mod.CreatedBy, mod.CreatedOn, mod.start_date
+            FROM RestaurantmodifierdetailCur mod
+            JOIN @Map m ON mod.OrderDetailId = m.OldDetailId;
+
+            -- 5. Subtract quantities from current detail records
+            UPDATE cur
+            SET cur.Quantity = cur.Quantity - m.QtyPaid,
+                cur.ActualAmount = (cur.Quantity - m.QtyPaid) * cur.PricePerUnit,
+                cur.TotalDetailLineAmount = (cur.Quantity - m.QtyPaid) * cur.PricePerUnit,
+                cur.BaseAmount = (cur.Quantity - m.QtyPaid) * cur.PricePerUnit
+            FROM RestaurantOrderDetailCur cur
+            JOIN @Map m ON cur.OrderDetailId = m.OldDetailId;
+
+            -- 6. Delete modifiers for completed items (remaining quantity <= 0)
+            DELETE mod
+            FROM RestaurantmodifierdetailCur mod
+            JOIN RestaurantOrderDetailCur cur ON mod.OrderDetailId = cur.OrderDetailId
+            WHERE cur.Quantity <= 0;
+
+            -- 7. Delete completed items from current order detail
+            DELETE FROM RestaurantOrderDetailCur WHERE Quantity <= 0;
+          `);
+      }
 
         // Check if there are any active items left in this order
         const remainingItems = await transaction.request()
