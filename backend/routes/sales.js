@@ -1868,46 +1868,50 @@ router.post("/save", async (req, res) => {
           });
         }
 
-        // Prepare and execute all inserts in a single database round-trip
-        const insertReq = transaction.request();
-        insertReq.input("SettlementID", sql.UniqueIdentifier, settlementId);
-        insertReq.input("startDate", sql.Date, formattedStartDate);
-        
-        let insertQueries = [];
-        items.forEach((item, idx) => {
-          const dishId = toGuidOrNull(item.dishId || item.id);
-          const nameKey = (item.dish_name || item.name || "").trim().toLowerCase();
-          const meta = (dishId && metaMap[String(dishId).toLowerCase()]) || metaMap[nameKey] || {};
+        // Chunk items in batches of 100 to avoid the 2100 parameter limit of SQL Server
+        const chunkSize = 100;
+        for (let i = 0; i < items.length; i += chunkSize) {
+          const chunk = items.slice(i, i + chunkSize);
+          const insertReq = transaction.request();
+          insertReq.input("SettlementID", sql.UniqueIdentifier, settlementId);
+          insertReq.input("startDate", sql.Date, formattedStartDate);
           
-          insertReq.input(`DishId_${idx}`, sql.UniqueIdentifier, toGuidOrNull(meta.DishId || dishId));
-          insertReq.input(`DishGroupId_${idx}`, sql.UniqueIdentifier, toGuidOrNull(meta.DishGroupId));
-          insertReq.input(`CategoryId_${idx}`, sql.UniqueIdentifier, toGuidOrNull(meta.CategoryId));
-          insertReq.input(`DishName_${idx}`, sql.NVarChar(255), item.dish_name || item.name || "Unknown");
-          insertReq.input(`SongName_${idx}`, sql.NVarChar(255), item.songName || item.SongName || "");
-          insertReq.input(`CategoryName_${idx}`, sql.NVarChar(255), meta.CategoryName || item.categoryName || "Unmapped");
-          insertReq.input(`SubCategoryName_${idx}`, sql.NVarChar(255), meta.DishGroupName || "Unmapped");
-          insertReq.input(`Qty_${idx}`, sql.Decimal(18, 3), item.qty || 1);
-          insertReq.input(`Price_${idx}`, sql.Decimal(18, 2), item.price || 0);
-          insertReq.input(`ItemDiscountAmount_${idx}`, sql.Decimal(18, 2), Number(item.discountAmount) || null);
-          insertReq.input(`ItemDiscountType_${idx}`, sql.NVarChar(50), item.discountType || (Number(item.discountAmount) > 0 ? "percentage" : null));
-          insertReq.input(`Status_${idx}`, sql.NVarChar(50), item.status || "NORMAL");
-          insertReq.input(`Spicy_${idx}`, sql.NVarChar(50), item.spicy || "");
-          insertReq.input(`Salt_${idx}`, sql.NVarChar(50), item.salt || "");
-          insertReq.input(`Oil_${idx}`, sql.NVarChar(50), item.oil || "");
-          insertReq.input(`Sugar_${idx}`, sql.NVarChar(50), item.sugar || "");
-          insertReq.input(`OrderDetailId_${idx}`, sql.UniqueIdentifier, toGuidOrNull(item.lineItemId));
+          let insertQueries = [];
+          chunk.forEach((item, idx) => {
+            const dishId = toGuidOrNull(item.dishId || item.id);
+            const nameKey = (item.dish_name || item.name || "").trim().toLowerCase();
+            const meta = (dishId && metaMap[String(dishId).toLowerCase()]) || metaMap[nameKey] || {};
+            
+            insertReq.input(`DishId_${idx}`, sql.UniqueIdentifier, toGuidOrNull(meta.DishId || dishId));
+            insertReq.input(`DishGroupId_${idx}`, sql.UniqueIdentifier, toGuidOrNull(meta.DishGroupId));
+            insertReq.input(`CategoryId_${idx}`, sql.UniqueIdentifier, toGuidOrNull(meta.CategoryId));
+            insertReq.input(`DishName_${idx}`, sql.NVarChar(255), item.dish_name || item.name || "Unknown");
+            insertReq.input(`SongName_${idx}`, sql.NVarChar(255), item.songName || item.SongName || "");
+            insertReq.input(`CategoryName_${idx}`, sql.NVarChar(255), meta.CategoryName || item.categoryName || "Unmapped");
+            insertReq.input(`SubCategoryName_${idx}`, sql.NVarChar(255), meta.DishGroupName || "Unmapped");
+            insertReq.input(`Qty_${idx}`, sql.Decimal(18, 3), item.qty || 1);
+            insertReq.input(`Price_${idx}`, sql.Decimal(18, 2), item.price || 0);
+            insertReq.input(`ItemDiscountAmount_${idx}`, sql.Decimal(18, 2), Number(item.discountAmount) || null);
+            insertReq.input(`ItemDiscountType_${idx}`, sql.NVarChar(50), item.discountType || (Number(item.discountAmount) > 0 ? "percentage" : null));
+            insertReq.input(`Status_${idx}`, sql.NVarChar(50), item.status || "NORMAL");
+            insertReq.input(`Spicy_${idx}`, sql.NVarChar(50), item.spicy || "");
+            insertReq.input(`Salt_${idx}`, sql.NVarChar(50), item.salt || "");
+            insertReq.input(`Oil_${idx}`, sql.NVarChar(50), item.oil || "");
+            insertReq.input(`Sugar_${idx}`, sql.NVarChar(50), item.sugar || "");
+            insertReq.input(`OrderDetailId_${idx}`, sql.UniqueIdentifier, toGuidOrNull(item.lineItemId));
+            
+            const comboJSON = item.comboSelections ? JSON.stringify(item.comboSelections) : null;
+            insertReq.input(`ComboDetailsJSON_${idx}`, sql.NVarChar(sql.MAX), comboJSON);
+            
+            insertQueries.push(`
+              INSERT INTO SettlementItemDetail (SettlementID, DishId, DishGroupId, SubCategoryId, CategoryId, DishName, SongName, Qty, Price, OrderDateTime, CategoryName, SubCategoryName, DiscountAmount, DiscountType, Status, Spicy, Salt, Oil, Sugar, OrderDetailId, ComboDetailsJSON, start_date)
+              VALUES (@SettlementID, @DishId_${idx}, @DishGroupId_${idx}, @DishGroupId_${idx}, @CategoryId_${idx}, @DishName_${idx}, @SongName_${idx}, @Qty_${idx}, @Price_${idx}, GETDATE(), @CategoryName_${idx}, @SubCategoryName_${idx}, @ItemDiscountAmount_${idx}, @ItemDiscountType_${idx}, @Status_${idx}, @Spicy_${idx}, @Salt_${idx}, @Oil_${idx}, @Sugar_${idx}, @OrderDetailId_${idx}, @ComboDetailsJSON_${idx}, @startDate);
+            `);
+          });
           
-          const comboJSON = item.comboSelections ? JSON.stringify(item.comboSelections) : null;
-          insertReq.input(`ComboDetailsJSON_${idx}`, sql.NVarChar(sql.MAX), comboJSON);
-          
-          insertQueries.push(`
-            INSERT INTO SettlementItemDetail (SettlementID, DishId, DishGroupId, SubCategoryId, CategoryId, DishName, SongName, Qty, Price, OrderDateTime, CategoryName, SubCategoryName, DiscountAmount, DiscountType, Status, Spicy, Salt, Oil, Sugar, OrderDetailId, ComboDetailsJSON, start_date)
-            VALUES (@SettlementID, @DishId_${idx}, @DishGroupId_${idx}, @DishGroupId_${idx}, @CategoryId_${idx}, @DishName_${idx}, @SongName_${idx}, @Qty_${idx}, @Price_${idx}, GETDATE(), @CategoryName_${idx}, @SubCategoryName_${idx}, @ItemDiscountAmount_${idx}, @ItemDiscountType_${idx}, @Status_${idx}, @Spicy_${idx}, @Salt_${idx}, @Oil_${idx}, @Sugar_${idx}, @OrderDetailId_${idx}, @ComboDetailsJSON_${idx}, @startDate);
-          `);
-        });
-        
-        await insertReq.query(insertQueries.join("\n"));
-        console.log(`[SAVE SALE] Batch insert complete for ${items.length} items.`);
+          await insertReq.query(insertQueries.join("\n"));
+        }
+        console.log(`[SAVE SALE] Batch insert complete for all ${items.length} items (chunked to avoid param limits).`);
       }
  
       // 4.5 Capture and Insert VOIDED items for reporting
