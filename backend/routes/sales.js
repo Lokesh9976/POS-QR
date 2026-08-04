@@ -2219,7 +2219,6 @@ router.post("/save", async (req, res) => {
             -- 7. Delete completed items from current order detail
             DELETE FROM RestaurantOrderDetailCur WHERE Quantity <= 0;
           `);
-      }
 
         // Check if there are any active items left in this order
         const remainingItems = await transaction.request()
