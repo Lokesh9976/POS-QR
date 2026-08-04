@@ -30,7 +30,7 @@ router.get("/kitchens", async (req, res) => {
 
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      SELECT cm.CategoryId, cm.CategoryName AS KitchenTypeName, ckt.KitchenTypeCode, cm.SortCode
+      SELECT cm.CategoryId, cm.CategoryName AS KitchenTypeName, ckt.KitchenTypeCode, cm.SortCode, ISNULL(cm.IsPublished, 0) AS IsPublished
       FROM CategoryMaster cm
       LEFT JOIN CategoryKitchenType ckt ON cm.CategoryId = ckt.CategoryId
       WHERE cm.IsActive = 1
@@ -54,7 +54,8 @@ router.get("/dishgroups/all", async (req, res) => {
     const result = await pool.request().query(`
       SELECT 
         DishGroupId,
-        DishGroupName
+        DishGroupName,
+        ISNULL(IsPublished, 0) AS IsPublished
       FROM DishGroupMaster
       WHERE IsActive = 1
       ORDER BY DishGroupName ASC
@@ -80,7 +81,8 @@ router.get("/dishgroups/:CategoryId", async (req, res) => {
         SELECT DISTINCT
               a.DishGroupId,
               a.DishGroupName,
-              a.SortCode
+              a.SortCode,
+              ISNULL(a.IsPublished, 0) AS IsPublished
           FROM DishGroupMaster a
           LEFT JOIN DishGroupKitchentype dkt
               ON a.DishGroupId = dkt.DishGroupId
@@ -117,6 +119,9 @@ router.get("/dishes/all", async (req, res) => {
         ISNULL(d.isServiceCharge, 1) AS isServiceCharge,
         ISNULL(d.IsCombo, 0) AS IsCombo,
         ISNULL(d.IsSoldOut, 0) AS IsSoldOut,
+        ISNULL(d.IsPublished, 0) AS IsPublished,
+        ISNULL(cat.IsPublished, 0) AS CategoryPublished,
+        ISNULL(dgm.IsPublished, 0) AS GroupPublished,
         (SELECT COUNT(1) FROM DishModifier dm WHERE dm.DishId = d.DishId) AS HasModifiers,
         CAST(ISNULL(d.IsDiscountAllowed, 1) AS INT) AS IsDiscountAllowed,
         ISNULL(ckt.KitchenTypeCode, '2') as KitchenTypeCode,
@@ -164,6 +169,9 @@ router.get("/dishes/group/:DishGroupId", async (req, res) => {
               ISNULL(d.IsOpenItem, 0) AS IsOpenItem,
               ISNULL(d.IsCombo, 0) AS IsCombo,
               ISNULL(d.IsSoldOut, 0) AS IsSoldOut,
+              ISNULL(d.IsPublished, 0) AS IsPublished,
+              ISNULL(cat.IsPublished, 0) AS CategoryPublished,
+              ISNULL(dgm.IsPublished, 0) AS GroupPublished,
               (SELECT COUNT(1) FROM DishModifier dm WHERE dm.DishId = d.DishId) AS HasModifiers,
               CAST(ISNULL(d.IsDiscountAllowed, 1) AS INT) AS IsDiscountAllowed,
               ISNULL(ckt.KitchenTypeCode, '2') AS KitchenTypeCode,

@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Modal,
+  TextInput,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Theme } from "../../constants/theme";
@@ -32,6 +34,12 @@ export default function CustomerItemDetailsScreen() {
   const [comboConfig, setComboConfig] = useState<any>(null);
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  
+  // Custom states for Open Modifiers
+  const [showOpenModModal, setShowOpenModModal] = useState(false);
+  const [openModItem, setOpenModItem] = useState<any>(null);
+  const [openModName, setOpenModName] = useState("");
+  const [openModPrice, setOpenModPrice] = useState("");
 
   useEffect(() => {
     const selected = allDishes.find((d: any) => String(d.DishId) === String(dishId));
@@ -119,12 +127,24 @@ export default function CustomerItemDetailsScreen() {
   };
 
   const handleToggleModifier = (mod: any) => {
+    const isSelected = selectedModifiers.some((m) => m.ModifierID === mod.ModifierID);
+
+    if (mod.isOpenModifier === 1 || mod.isOpenModifier === true) {
+      if (isSelected) {
+        setSelectedModifiers(selectedModifiers.filter((m) => m.ModifierID !== mod.ModifierID));
+      } else {
+        setOpenModItem(mod);
+        setOpenModName("");
+        setOpenModPrice("");
+        setShowOpenModModal(true);
+      }
+      return;
+    }
+
     const groupId = mod.ModifierGroupId;
     const maxSel = Number(mod.MaxSelectionCount) || 1;
     const isMulti = Number(mod.MultiselectAllow) === 1 && maxSel > 1;
 
-    const isSelected = selectedModifiers.some((m) => m.ModifierID === mod.ModifierID);
-    
     // Get currently selected modifiers belonging to the same group
     const currentGroupSelections = selectedModifiers.filter((m) => m.ModifierGroupId === groupId);
 
@@ -145,6 +165,53 @@ export default function CustomerItemDetailsScreen() {
         setSelectedModifiers([...otherGroupsMods, mod]);
       }
     }
+  };
+
+  const handleConfirmOpenModPrice = () => {
+    if (!openModItem) return;
+    const name = openModName.trim();
+    if (!name) {
+      Alert.alert("Required", "Please enter modifier name");
+      return;
+    }
+    const parsedPrice = parseFloat(openModPrice) || 0;
+    if (parsedPrice < 0) {
+      Alert.alert("Invalid Price", "Price cannot be negative");
+      return;
+    }
+
+    const newId = `custom-${Date.now()}`;
+    const customMod = {
+      ...openModItem,
+      ModifierID: newId,
+      Price: parsedPrice,
+      ModifierName: name,
+      isOpenModifier: 0
+    };
+
+    // Add to UI modifiers list so it shows in the grid
+    setModifiers((prev) => [...prev, customMod]);
+
+    const groupId = openModItem.ModifierGroupId;
+    const maxSel = Number(openModItem.MaxSelectionCount) || 1;
+    const isMulti = Number(openModItem.MultiselectAllow) === 1 && maxSel > 1;
+    const currentGroupSelections = selectedModifiers.filter((m) => m.ModifierGroupId === groupId);
+
+    if (isMulti) {
+      if (currentGroupSelections.length < maxSel) {
+        setSelectedModifiers([...selectedModifiers, customMod]);
+      } else {
+        Alert.alert("Selection Limit", `You can select up to ${maxSel} option(s) for "${openModItem.ModifierGroupName || "Modifiers"}".`);
+      }
+    } else {
+      const otherGroupsMods = selectedModifiers.filter((m) => m.ModifierGroupId !== groupId);
+      setSelectedModifiers([...otherGroupsMods, customMod]);
+    }
+
+    setShowOpenModModal(false);
+    setOpenModItem(null);
+    setOpenModName("");
+    setOpenModPrice("");
   };
 
   const calculateTotalPrice = () => {
@@ -360,7 +427,10 @@ export default function CustomerItemDetailsScreen() {
               
               <View style={styles.comboGridContainer}>
                 {groupItems.map((mod) => {
-                  const isSelected = selectedModifiers.some((m) => m.ModifierID === mod.ModifierID);
+                  const selectedMod = selectedModifiers.find((m) => m.ModifierID === mod.ModifierID);
+                  const isSelected = !!selectedMod;
+                  const displayPrice = selectedMod ? selectedMod.Price : mod.Price;
+                  const displayName = selectedMod ? selectedMod.ModifierName : mod.ModifierName;
                   return (
                     <TouchableOpacity
                       key={mod.ModifierID}
@@ -375,9 +445,9 @@ export default function CustomerItemDetailsScreen() {
                           style={{ marginRight: 8 }}
                         />
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.comboItemName} numberOfLines={2}>{mod.ModifierName}</Text>
-                          <Text style={[styles.comboItemSurcharge, { color: Number(mod.Price) > 0 ? Theme.primary : "#64748B" }]}>
-                            {Number(mod.Price) > 0 ? `+$${Number(mod.Price).toFixed(2)}` : "Included"}
+                          <Text style={styles.comboItemName} numberOfLines={2}>{displayName}</Text>
+                          <Text style={[styles.comboItemSurcharge, { color: Number(displayPrice) > 0 ? Theme.primary : "#64748B" }]}>
+                            {Number(displayPrice) > 0 ? `+$${Number(displayPrice).toFixed(2)}` : "Included"}
                           </Text>
                         </View>
                       </View>
@@ -426,6 +496,83 @@ export default function CustomerItemDetailsScreen() {
           </View>
         </View>
       )}
+
+      {/* Open Modifier Price Modal */}
+      <Modal visible={showOpenModModal} transparent animationType="fade">
+        <View style={styles.alertOverlay}>
+          <View style={[styles.alertBox, { maxWidth: 360, padding: 24 }]}>
+            <Text style={[styles.alertTitle, { fontSize: 20, marginBottom: 20 }]}>Add Custom Modifier</Text>
+            
+            {/* Name Field */}
+            <View style={{ width: "100%", marginBottom: 16, alignItems: "flex-start" }}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "#475569", marginBottom: 6 }}>Modifier Name *</Text>
+              <TextInput
+                style={{
+                  width: "100%",
+                  height: 48,
+                  backgroundColor: "#FAF7F2",
+                  borderRadius: 14,
+                  paddingHorizontal: 16,
+                  fontSize: 15,
+                  fontWeight: "600",
+                  color: "#0F172A",
+                  borderWidth: 1.5,
+                  borderColor: "#EAE6DF",
+                }}
+                value={openModName}
+                onChangeText={setOpenModName}
+                placeholder="Enter modifier name"
+                placeholderTextColor="#A19C95"
+                autoFocus
+              />
+            </View>
+
+            {/* Price Field */}
+            <View style={{ width: "100%", marginBottom: 24, alignItems: "flex-start" }}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: "#475569", marginBottom: 6 }}>Price (Optional)</Text>
+              <TextInput
+                style={{
+                  width: "100%",
+                  height: 48,
+                  backgroundColor: "#FAF7F2",
+                  borderRadius: 14,
+                  paddingHorizontal: 16,
+                  fontSize: 15,
+                  fontWeight: "600",
+                  color: "#0F172A",
+                  borderWidth: 1.5,
+                  borderColor: "#EAE6DF",
+                }}
+                value={openModPrice}
+                onChangeText={setOpenModPrice}
+                placeholder="Enter price"
+                placeholderTextColor="#A19C95"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={{ flexDirection: "row", gap: 12, width: "100%" }}>
+              <TouchableOpacity
+                style={[styles.alertCloseBtn, { flex: 1, backgroundColor: "#FAF3E8", borderRadius: 16 }]}
+                onPress={() => {
+                  setShowOpenModModal(false);
+                  setOpenModItem(null);
+                  setOpenModName("");
+                  setOpenModPrice("");
+                }}
+              >
+                <Text style={[styles.alertCloseText, { color: "#6E685E" }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.alertCloseBtn, { flex: 1, backgroundColor: Theme.primary, borderRadius: 16 }]}
+                onPress={handleConfirmOpenModPrice}
+              >
+                <Text style={[styles.alertCloseText, { color: "#fff" }]}>Add Modifier</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

@@ -101,6 +101,7 @@ const NavRail = () => {
 const DishCard = React.memo(
   ({ dish, width, cartQty, onPress, isPhone, isTablet, isLandscape }: any) => {
     const isSC = (Number(dish.isServiceCharge) === 1 || dish.isServiceCharge === true) && useGeneralSettingsStore.getState().settings.SVCIdentification !== false;
+    const isSoldOut = dish.IsSoldOut === true || String(dish.IsSoldOut) === "1" || dish.IsSoldOut === 1 || dish.isSoldOut === true || String(dish.isSoldOut) === "1" || dish.isSoldOut === 1;
     return (
       <Pressable
         style={({ pressed }: { pressed: boolean }) => [
@@ -112,9 +113,17 @@ const DishCard = React.memo(
             borderColor: Theme.dangerBorder,
             backgroundColor: Theme.dangerBg,
           },
-          pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+          isSoldOut && { opacity: 0.5 },
+          pressed && !isSoldOut && { opacity: 0.85, transform: [{ scale: 0.98 }] },
         ]}
-        onPress={() => onPress(dish)}
+        onPress={() => {
+          if (isSoldOut) {
+            alert(`${dish.Name} is Sold Out!`);
+            return;
+          }
+          onPress(dish);
+        }}
+        disabled={isSoldOut}
       >
         {cartQty > 0 && (
           <View
@@ -177,6 +186,23 @@ const DishCard = React.memo(
               />
             </View>
           )}
+          {isSoldOut && (
+            <View style={{
+              position: "absolute",
+              top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.4)",
+              justifyContent: "center",
+              alignItems: "center",
+              borderRadius: isPhone ? 24 : 37.5,
+            }}>
+              <Text style={{
+                color: "#fff",
+                fontSize: isPhone ? 8 : 10,
+                fontFamily: Fonts.bold,
+                textAlign: "center"
+              }}>SOLD OUT</Text>
+            </View>
+          )}
         </View>
         <Text
           style={[
@@ -199,7 +225,11 @@ const DishCard = React.memo(
         >
           {(Number(dish.IsOpenItem) === 1 || dish.IsOpenItem === true || dish.IsOpenItem === 'true' || dish.IsOpenItem === '1') ? "Open Price" : `$${(dish.Price || 0).toFixed(2)}`}
         </Text>
-        {(Number(dish.IsOpenItem) === 1 || dish.IsOpenItem === true || dish.IsOpenItem === 'true' || dish.IsOpenItem === '1') ? (
+        {isSoldOut ? (
+          <View style={{ backgroundColor: "#EF444422", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, marginTop: 2, borderWidth: 1, borderColor: "#EF444444", alignSelf: "center" }}>
+            <Text style={{ fontSize: 9, color: "#EF4444", fontFamily: Fonts.bold }}>SOLD OUT</Text>
+          </View>
+        ) : (Number(dish.IsOpenItem) === 1 || dish.IsOpenItem === true || dish.IsOpenItem === 'true' || dish.IsOpenItem === '1') ? (
           <View style={{ backgroundColor: "#F59E0B22", borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1, marginTop: 2, borderWidth: 1, borderColor: "#F59E0B44", alignSelf: "center" }}>
             <Text style={{ fontSize: 9, color: "#B45309", fontFamily: Fonts.bold }}>OPEN</Text>
           </View>

@@ -177,9 +177,10 @@ router.post('/', authenticateBridge, async (req, res) => {
       const kitchenRes = await pool.request()
         .input('KitchenTypeValue', sql.NVarChar(50), kitchenTypeValue ? String(kitchenTypeValue) : '0')
         .query(`
-          SELECT TOP 1 PrinterIP, PrinterName 
+          SELECT TOP 1 ISNULL(NULLIF(PrinterIP, ''), NULLIF(PrinterPath, '')) as PrinterIP, PrinterName 
           FROM PrintMaster 
-          WHERE PrinterType = 2 AND CAST(KitchenTypeValue AS VARCHAR(50)) = CAST(@KitchenTypeValue AS VARCHAR(50)) AND IsActive = 1 AND PrinterIP IS NOT NULL AND PrinterIP <> ''
+          WHERE PrinterType = 2 AND CAST(KitchenTypeValue AS VARCHAR(50)) = CAST(@KitchenTypeValue AS VARCHAR(50)) AND IsActive = 1 
+            AND (PrinterIP IS NOT NULL AND PrinterIP <> '' OR PrinterPath IS NOT NULL AND PrinterPath <> '')
         `);
       if (kitchenRes.recordset.length > 0) {
         printerIp = kitchenRes.recordset[0].PrinterIP;
@@ -192,9 +193,10 @@ router.post('/', authenticateBridge, async (req, res) => {
       const printerRes = await pool.request()
         .input('PrinterType', sql.Int, pType)
         .query(`
-          SELECT TOP 1 PrinterIP, PrinterName 
+          SELECT TOP 1 ISNULL(NULLIF(PrinterIP, ''), NULLIF(PrinterPath, '')) as PrinterIP, PrinterName 
           FROM PrintMaster 
-          WHERE PrinterType = @PrinterType AND IsActive = 1 AND PrinterIP IS NOT NULL AND PrinterIP <> ''
+          WHERE PrinterType = @PrinterType AND IsActive = 1 
+            AND (PrinterIP IS NOT NULL AND PrinterIP <> '' OR PrinterPath IS NOT NULL AND PrinterPath <> '')
         `);
       if (printerRes.recordset.length > 0) {
         printerIp = printerRes.recordset[0].PrinterIP;
@@ -206,9 +208,10 @@ router.post('/', authenticateBridge, async (req, res) => {
     if (!printerIp || printerIp.trim() === '') {
       const cashierRes = await pool.request()
         .query(`
-          SELECT TOP 1 PrinterIP, PrinterName 
+          SELECT TOP 1 ISNULL(NULLIF(PrinterIP, ''), NULLIF(PrinterPath, '')) as PrinterIP, PrinterName 
           FROM PrintMaster 
-          WHERE PrinterType = 1 AND IsActive = 1 AND PrinterIP IS NOT NULL AND PrinterIP <> ''
+          WHERE PrinterType = 1 AND IsActive = 1 
+            AND (PrinterIP IS NOT NULL AND PrinterIP <> '' OR PrinterPath IS NOT NULL AND PrinterPath <> '')
         `);
       if (cashierRes.recordset.length > 0) {
         printerIp = cashierRes.recordset[0].PrinterIP;

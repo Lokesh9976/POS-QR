@@ -738,12 +738,12 @@ export default function CompanySettingsScreen() {
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <Text style={styles.inputLabel}>{printer.KitchenTypeName} Printer IP</Text>
                     
-                    {/* Toggle Switch */}
                     <TouchableOpacity
                       onPress={() => {
-                        const updated = [...kitchenPrinters];
                         const currentActive = printer.IsActive === undefined ? true : (printer.IsActive === 1 || printer.IsActive === true);
-                        updated[index].IsActive = currentActive ? 0 : 1;
+                        const updated = kitchenPrinters.map((kp, idx) => 
+                          idx === index ? { ...kp, IsActive: currentActive ? 0 : 1 } : kp
+                        );
                         setKitchenPrinters(updated);
                       }}
                       style={[styles.toggleSwitch, (printer.IsActive === undefined || printer.IsActive === 1 || printer.IsActive === true) && styles.toggleSwitchOn]}

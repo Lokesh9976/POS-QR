@@ -565,6 +565,27 @@ export default function CustomerMenuScreen() {
 
   useEffect(() => {
     fetchMenu();
+    // Inject hover styles for Web/customer menu
+    if (Platform.OS === 'web') {
+      const styleId = "customer-hover-styles";
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement("style");
+        style.id = styleId;
+        style.textContent = `
+          .hover-button:hover {
+            opacity: 0.9 !important;
+            transform: scale(1.04) !important;
+            transition: all 0.15s ease-in-out !important;
+          }
+          .hover-card:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04) !important;
+            transition: all 0.2s ease-in-out !important;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
     // 👥 Prompt for guest count (Pax) on menu mount if not already confirmed for this table session
     if (orderContext?.tableId && typeof localStorage !== "undefined") {
       const confirmed = localStorage.getItem(`pax_confirmed_${orderContext.tableId}`);
@@ -573,6 +594,14 @@ export default function CustomerMenuScreen() {
       }
     }
   }, [orderContext?.tableId]);
+
+  const getDishQtyInCart = (dishId: string) => {
+    if (!currentContextId) return 0;
+    const cart = carts[currentContextId] || [];
+    return cart
+      .filter((item: any) => (item.id === dishId || item.DishId === dishId) && item.status !== "VOIDED")
+      .reduce((sum: number, item: any) => sum + (item.qty || 0), 0);
+  };
 
   // 🔄 REAL-TIME SYNC: Listen for cart updates from backend (when another session places order)
   useEffect(() => {
@@ -644,8 +673,9 @@ export default function CustomerMenuScreen() {
 
   // Load first kitchen by default
   useEffect(() => {
-    if (kitchens.length > 0 && !selectedKitchenId) {
-      setSelectedKitchenId(kitchens[0].CategoryId);
+    const published = kitchens.filter(k => k.IsPublished !== 1 && k.IsPublished !== true && k.IsPublished !== '1');
+    if (published.length > 0 && !selectedKitchenId) {
+      setSelectedKitchenId(published[0].CategoryId);
     }
   }, [kitchens]);
 
@@ -653,9 +683,10 @@ export default function CustomerMenuScreen() {
   useEffect(() => {
     if (selectedKitchenId) {
       fetchGroups(selectedKitchenId).then((groups) => {
-        setDishGroups(groups);
-        if (groups && groups.length > 0) {
-          setSelectedGroupId(groups[0].DishGroupId);
+        const publishedGroups = groups.filter(g => g.IsPublished !== 1 && g.IsPublished !== true && g.IsPublished !== '1');
+        setDishGroups(publishedGroups);
+        if (publishedGroups && publishedGroups.length > 0) {
+          setSelectedGroupId(publishedGroups[0].DishGroupId);
         } else {
           setSelectedGroupId(null);
         }
@@ -699,6 +730,15 @@ export default function CustomerMenuScreen() {
   }
 
   const filteredDishes = allDishes.filter((dish: any) => {
+    // Hide if unpublished on Dish, Category, or Group level for QR only
+    if (
+      dish.IsPublished === 1 || dish.IsPublished === true || dish.IsPublished === '1' ||
+      dish.CategoryPublished === 1 || dish.CategoryPublished === true || dish.CategoryPublished === '1' ||
+      dish.GroupPublished === 1 || dish.GroupPublished === true || dish.GroupPublished === '1'
+    ) {
+      return false;
+    }
+
     const query = search.trim().toLowerCase();
     if (query.length > 0) {
       const nameMatch = dish.Name?.toLowerCase().includes(query);
@@ -799,7 +839,7 @@ export default function CustomerMenuScreen() {
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
-          data={kitchens}
+          data={kitchens.filter(k => k.IsPublished !== 1 && k.IsPublished !== true && k.IsPublished !== '1')}
           keyExtractor={(item) => item.CategoryId}
           renderItem={({ item }) => {
             const isSelected = selectedKitchenId === item.CategoryId;
@@ -864,17 +904,28 @@ export default function CustomerMenuScreen() {
             const hasModifiers = modifiers.length > 0 || Number(item.HasModifiers) > 0;
             const needsCustomization = isCombo || hasModifiers;
             const isSoldOut = item.IsSoldOut === true || String(item.IsSoldOut) === "1" || item.IsSoldOut === 1 || item.isSoldOut === true || String(item.isSoldOut) === "1" || item.isSoldOut === 1;
+            const qtyInCart = getDishQtyInCart(item.DishId || item.id);
 
             return (
-              <View style={[styles.dishCard, isSoldOut && { opacity: 0.7 }]}>
-                <Image
-                  source={{
-                    uri: item.Image
-                      ? `${API_URL}/api/menu/image/${item.Image}`
-                      : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=150",
-                  }}
-                  style={styles.dishImage}
-                />
+              <View 
+                style={[styles.dishCard, isSoldOut && { opacity: 0.7 }]}
+                className="hover-card"
+              >
+                <View style={{ position: "relative" }}>
+                  <Image
+                    source={{
+                      uri: item.Image
+                        ? `${API_URL}/api/menu/image/${item.Image}`
+                        : "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=150",
+                    }}
+                    style={styles.dishImage}
+                  />
+                  {qtyInCart > 0 && (
+                    <View style={styles.dishQtyBadge}>
+                      <Text style={styles.dishQtyBadgeText}>{qtyInCart}</Text>
+                    </View>
+                  )}
+                </View>
                 <View style={styles.dishInfo}>
                   <Text style={styles.dishName}>{item.Name}</Text>
                   <Text style={styles.dishDescription} numberOfLines={2}>
@@ -886,6 +937,7 @@ export default function CustomerMenuScreen() {
                       style={[styles.addButton, isSoldOut && { backgroundColor: "#94A3B8" }]} 
                       onPress={() => handleAddSimple(item)}
                       disabled={isSoldOut}
+                      className={!isSoldOut ? "hover-button" : ""}
                     >
                       <Text style={styles.addButtonText}>{isSoldOut ? "Sold Out" : (needsCustomization ? "Customize" : "Add")}</Text>
                       {!isSoldOut && <Ionicons name="add" size={16} color="#fff" />}
@@ -1424,6 +1476,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
     marginRight: 6,
+    cursor: "pointer",
   },
   groupPillSelected: {
     backgroundColor: "#fff",
@@ -1445,6 +1498,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: "#E2E8F0",
     marginRight: 8,
+    cursor: "pointer",
   },
   categoryPillSelected: {
     backgroundColor: Theme.primary,
@@ -1486,11 +1540,37 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.03,
     shadowRadius: 8,
     elevation: 2,
+    cursor: "pointer",
   },
   dishImage: {
     width: 90,
     height: 90,
     borderRadius: 12,
+  },
+  dishQtyBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    backgroundColor: Theme.primary,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 5,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
+    zIndex: 10,
+  },
+  dishQtyBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "bold",
   },
   dishInfo: {
     flex: 1,
@@ -1525,6 +1605,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     flexDirection: "row",
     alignItems: "center",
+    cursor: "pointer",
   },
   addButtonText: {
     color: "#fff",

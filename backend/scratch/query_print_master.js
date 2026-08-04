@@ -1,26 +1,16 @@
 const { poolPromise } = require("../config/db");
 
-async function check() {
+async function run() {
   try {
     const pool = await poolPromise;
-    console.log("=== PRINT MASTER ===");
-    const pmRes = await pool.request().query("SELECT * FROM PrintMaster");
-    console.table(pmRes.recordset.map(r => ({
-      PrinterId: r.PrinterId,
-      PrinterName: r.PrinterName,
-      PrinterType: r.PrinterType,
-      KitchenTypeValue: r.KitchenTypeValue,
-      PrinterIP: r.PrinterIP,
-      IsActive: r.IsActive
-    })));
-
-    console.log("=== LATEST PRINT JOB QUEUE ===");
-    const pjqRes = await pool.request().query("SELECT TOP 5 JobId, StoreId, PrinterName, PrinterIp, Status, CreatedOn FROM PrintJobQueue ORDER BY CreatedOn DESC");
-    console.table(pjqRes.recordset);
+    console.log("Querying all rows in PrintMaster...");
+    const pm = await pool.request().query("SELECT PrinterId, PrinterName, PrinterType, KitchenTypeValue, PrinterPath, PrinterIP, IsActive FROM PrintMaster");
+    console.log(pm.recordset);
   } catch (err) {
-    console.error("Error running checks:", err);
+    console.error(err);
+  } finally {
+    process.exit(0);
   }
-  process.exit(0);
 }
 
-check();
+run();

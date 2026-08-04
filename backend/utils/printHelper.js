@@ -188,7 +188,7 @@ async function queueQRPrintJobs(pool, sql, opts) {
       const printerRes = await pool.request()
         .input('KTV', sql.NVarChar(50), kCode)
         .query(`
-          SELECT TOP 1 ISNULL(PrinterIP, PrinterPath) as PrinterIP, PrinterName
+          SELECT TOP 1 ISNULL(NULLIF(PrinterIP, ''), NULLIF(PrinterPath, '')) as PrinterIP, PrinterName
           FROM PrintMaster
           WHERE PrinterType = 2
             AND CAST(KitchenTypeValue AS VARCHAR(50)) = CAST(@KTV AS VARCHAR(50))
@@ -229,7 +229,7 @@ async function queueQRPrintJobs(pool, sql, opts) {
   try {
     const kdsRes = await pool.request()
       .query(`
-        SELECT TOP 1 ISNULL(PrinterIP, PrinterPath) as PrinterIP, PrinterName
+        SELECT TOP 1 ISNULL(NULLIF(PrinterIP, ''), NULLIF(PrinterPath, '')) as PrinterIP, PrinterName
         FROM PrintMaster
         WHERE PrinterType = 4 AND IsActive = 1
           AND (PrinterIP IS NOT NULL AND PrinterIP <> '' OR PrinterPath IS NOT NULL AND PrinterPath <> '')

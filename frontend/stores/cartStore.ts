@@ -180,7 +180,7 @@ const normalizeCartItem = (item: any, fallback: Partial<CartItem> = {}): CartIte
     }
   }
   const qty = Number(item.qty ?? item.Quantity ?? item.quantity ?? fallback.qty ?? 1);
-  const price = Number(item.price ?? item.Cost ?? item.Price ?? fallback.price ?? 0);
+  const originalPrice = Number(item.price ?? item.Cost ?? item.Price ?? fallback.price ?? 0);
   const note = getNormalizedText(item.note, item.Note, item.notes, item.Notes, item.Remarks, item.remarks, fallback.note);
   const isTakeaway = getNormalizedBoolean(item.isTakeaway, item.IsTakeaway, item.isTakeAway, item.IsTakeAway, fallback.isTakeaway);
   const discount = Number(item.discount ?? item.DiscountAmount ?? item.Discount ?? fallback.discount ?? 0);
@@ -202,6 +202,27 @@ const normalizeCartItem = (item: any, fallback: Partial<CartItem> = {}): CartIte
     });
     modifiers = normalMods;
   }
+
+  const isCombo = getNormalizedBoolean(item.isCombo, item.IsCombo, item.ComboDetailsJSON, fallback.isCombo);
+  const comboSelections = incomingComboSelections || _comboGroups || fallback.comboSelections || undefined;
+
+  let finalBasePrice = Number(item.basePrice ?? _comboBasePrice ?? fallback.basePrice ?? originalPrice);
+  let finalPrice = originalPrice;
+
+  if (isCombo && Array.isArray(comboSelections)) {
+    let surchargeTotal = 0;
+    comboSelections.forEach((group: any) => {
+      const itemsList = group.items || group.options || [];
+      if (Array.isArray(itemsList)) {
+        itemsList.forEach((opt: any) => {
+          surchargeTotal += Number(opt.surcharge || 0) + Number(opt.dishPrice || 0);
+        });
+      }
+    });
+    if (finalPrice <= finalBasePrice || finalPrice === 0) {
+      finalPrice = finalBasePrice + surchargeTotal;
+    }
+  }
  
   // 🚀 PERFORMANCE FIX: Construct cleanly instead of using 'delete' loop
   return {
@@ -215,8 +236,8 @@ const normalizeCartItem = (item: any, fallback: Partial<CartItem> = {}): CartIte
       ""
     ),
     qty,
-    price,
-    basePrice: Number(item.basePrice ?? _comboBasePrice ?? fallback.basePrice ?? price),
+    price: finalPrice,
+    basePrice: finalBasePrice,
     note,
     isTakeaway,
     discount,
