@@ -414,7 +414,7 @@ function formatKOTThermalText(data, type) {
 
     if (item.modifiers && item.modifiers.length > 0) {
       item.modifiers.forEach((m) => {
-        t += `[L]    + ${m.ModifierName || m.name}\n`;
+        t += `[L]    <font size='big'><B>+ ${m.ModifierName || m.name}</B></font>\n`;
       });
     }
 

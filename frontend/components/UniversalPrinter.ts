@@ -1214,14 +1214,14 @@ class UniversalPrinter {
 
           if (item.modifiers && item.modifiers.length > 0) {
             item.modifiers.forEach((m: any) => {
-              text += `[L]    + ${m.ModifierName || m.name}\n`;
+              text += `[L]    <font size='big'><B>+ ${m.ModifierName || m.name}</B></font>\n`;
             });
           }
 
           if (item.comboSelections && item.comboSelections.length > 0) {
             item.comboSelections.forEach((g: any) => {
               g.items?.forEach((opt: any) => {
-                text += `[L]    ↳ ${opt.name}\n`;
+                text += `[L]    <font size='big'><B>↳ ${opt.name}</B></font>\n`;
               });
             });
           }
@@ -1264,14 +1264,14 @@ class UniversalPrinter {
 
         if (item.modifiers && item.modifiers.length > 0) {
           item.modifiers.forEach((m: any) => {
-            text += `[L]    + ${m.ModifierName || m.name}\n`;
+            text += `[L]    <font size='big'><B>+ ${m.ModifierName || m.name}</B></font>\n`;
           });
         }
 
         if (item.comboSelections && item.comboSelections.length > 0) {
           item.comboSelections.forEach((g: any) => {
             g.items?.forEach((opt: any) => {
-              text += `[L]    ↳ ${opt.name}\n`;
+              text += `[L]    <font size='big'><B>↳ ${opt.name}</B></font>\n`;
             });
           });
         }
@@ -1901,9 +1901,6 @@ class UniversalPrinter {
       ? parseFloat((finalTotal - (taxableAmount + gstAmount)).toFixed(2))
       : 0;
 
-    if (!hasAnyDiscount) {
-      text += this.formatTwoCols48("Sub Total:", `${symbol}${currentSubtotal.toFixed(2)}`);
-    }
 
     if (hasSC) {
       text += this.formatTwoCols48(allItemsHaveSC ? "Service Charge:" : "Item Service Charge:", `${symbol}${serviceChargeAmount.toFixed(2)}`);
