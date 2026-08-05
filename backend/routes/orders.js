@@ -1860,16 +1860,15 @@ router.post("/checkout", async (req, res) => {
   const attemptCheckout = async () => {
     const { tableId } = req.body;
     const pool = await poolPromise;
-    const cleanId = await getCleanTableId(pool, tableId);
-    if (!toGuidOrNull(cleanId)) {
-      console.log(`[Checkout] Skipping table updates for non-table order: ${tableId}`);
+    const cleanId = String(tableId || "").replace(/^\{|\}$/g, "").trim();
+    if (!cleanId || cleanId === "undefined" || cleanId === "null") {
       return res.json({ success: true, tableNo: "TAKEAWAY", section: "TAKEAWAY" });
     }
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
       // Step 1: Move table to Payment Pending (Status 2)
-      await transaction.request().input("tid", sql.UniqueIdentifier, cleanId).query(`
+      await transaction.request().input("tid", sql.VarChar(50), cleanId).query(`
           -- Reduce deadlock victim priority: prefer to lose vs more critical write transactions
           SET DEADLOCK_PRIORITY LOW;
 
