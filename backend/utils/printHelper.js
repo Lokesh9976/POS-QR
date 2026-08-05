@@ -122,7 +122,7 @@ function _formatItem(item) {
       const modName = m.ModifierName || m.modifierName || m.name || m.ModifierNameEn || "";
       if (modName) {
         const formattedMod = modName.split(' ').filter(Boolean).join('  ');
-        text += `[L]      <B>+   ${formattedMod}</B>\n`;
+        text += `[L]      <font size='big'><B>+   ${formattedMod}</B></font>\n`;
       }
     });
   }
@@ -132,7 +132,7 @@ function _formatItem(item) {
       if (Array.isArray(g.items)) {
         g.items.forEach(opt => {
           const formattedCombo = opt.name.split(' ').filter(Boolean).join('  ');
-          text += `[L]      <B>-   ${formattedCombo}</B>\n`;
+          text += `[L]      <font size='big'><B>-   ${formattedCombo}</B></font>\n`;
         });
       }
     });

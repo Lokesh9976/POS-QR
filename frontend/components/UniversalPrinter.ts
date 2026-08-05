@@ -1215,7 +1215,7 @@ class UniversalPrinter {
             item.modifiers.forEach((m: any) => {
               const modName = m.ModifierName || m.name || "";
               const formattedMod = modName.split(' ').filter(Boolean).join('  ');
-              text += `[L]    <B>+   ${formattedMod}</B>\n`;
+              text += `[L]    <font size='big'><B>+   ${formattedMod}</B></font>\n`;
             });
           }
 
@@ -1223,7 +1223,7 @@ class UniversalPrinter {
             item.comboSelections.forEach((g: any) => {
               g.items?.forEach((opt: any) => {
                 const formattedCombo = opt.name.split(' ').filter(Boolean).join('  ');
-                text += `[L]    <B>-   ${formattedCombo}</B>\n`;
+                text += `[L]    <font size='big'><B>-   ${formattedCombo}</B></font>\n`;
               });
             });
           }
@@ -1268,7 +1268,7 @@ class UniversalPrinter {
           item.modifiers.forEach((m: any) => {
             const modName = m.ModifierName || m.name || "";
             const formattedMod = modName.split(' ').filter(Boolean).join('  ');
-            text += `[L]    <B>+   ${formattedMod}</B>\n`;
+            text += `[L]    <font size='big'><B>+   ${formattedMod}</B></font>\n`;
           });
         }
 
@@ -1276,7 +1276,7 @@ class UniversalPrinter {
           item.comboSelections.forEach((g: any) => {
             g.items?.forEach((opt: any) => {
               const formattedCombo = opt.name.split(' ').filter(Boolean).join('  ');
-              text += `[L]    <B>-   ${formattedCombo}</B>\n`;
+              text += `[L]    <font size='big'><B>-   ${formattedCombo}</B></font>\n`;
             });
           });
         }
