@@ -143,11 +143,8 @@ function CustomDateTimePicker({ visible, onClose, selectedDate, onApply, title }
 
   const handleApply = () => {
     const finalDate = new Date(selectedDay);
-    let finalHours = hour % 12;
-    if (amPm === "PM") {
-      finalHours += 12;
-    }
-    finalDate.setHours(finalHours, minute, 0, 0);
+    // Keep the hours/minutes/seconds of the original selectedDate
+    finalDate.setHours(selectedDate.getHours(), selectedDate.getMinutes(), selectedDate.getSeconds(), selectedDate.getMilliseconds());
     onApply(finalDate);
     onClose();
   };
@@ -156,9 +153,7 @@ function CustomDateTimePicker({ visible, onClose, selectedDate, onApply, title }
     const d = selectedDay.getDate().toString().padStart(2, '0');
     const m = (selectedDay.getMonth() + 1).toString().padStart(2, '0');
     const y = selectedDay.getFullYear();
-    const h = hour.toString().padStart(2, '0');
-    const minStr = minute.toString().padStart(2, '0');
-    return `${d}-${m}-${y} ${h}:${minStr} ${amPm}`;
+    return `${d}-${m}-${y}`;
   };
 
   const monthNames = [
@@ -186,7 +181,7 @@ function CustomDateTimePicker({ visible, onClose, selectedDate, onApply, title }
             showsVerticalScrollIndicator={false}
           >
             {/* Columns Container */}
-            <View style={{ flexDirection: isTablet ? 'row' : 'column', gap: 20 }}>
+            <View style={{ flexDirection: 'column', gap: 20 }}>
               {/* Left Side: Calendar */}
               <View style={{ flex: 1 }}>
                 {/* Calendar Navigator */}
@@ -234,63 +229,10 @@ function CustomDateTimePicker({ visible, onClose, selectedDate, onApply, title }
                     );
                   })}
                 </View>
-              </View>
-
-              {/* Vertical Divider */}
-              {isTablet && <View style={pickerStyles.verticalDivider} />}
-
-              {/* Right Side: Time */}
-              <View style={[pickerStyles.timePanel, !isTablet && { width: '100%', marginTop: 10 }]}>
-                <Text style={pickerStyles.setTimeTitle}>SET TIME</Text>
-
-                {/* Picker Blocks */}
-                <View style={pickerStyles.timePickersRow}>
-                  {/* Hour */}
-                  <View style={pickerStyles.timeBlock}>
-                    <TouchableOpacity onPress={() => adjustHour(1)} style={pickerStyles.arrowBtn}>
-                      <Ionicons name="chevron-up" size={18} color="#44403C" />
-                    </TouchableOpacity>
-                    <View style={pickerStyles.timeInputBox}>
-                      <Text style={pickerStyles.timeValueText}>{hour.toString().padStart(2, '0')}</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => adjustHour(-1)} style={pickerStyles.arrowBtn}>
-                      <Ionicons name="chevron-down" size={18} color="#44403C" />
-                    </TouchableOpacity>
-                    <Text style={pickerStyles.timeLabel}>Hour</Text>
-                  </View>
-
-                  {/* Separator */}
-                  <Text style={pickerStyles.timeSeparator}>:</Text>
-
-                  {/* Minute */}
-                  <View style={pickerStyles.timeBlock}>
-                    <TouchableOpacity onPress={() => adjustMinute(1)} style={pickerStyles.arrowBtn}>
-                      <Ionicons name="chevron-up" size={18} color="#44403C" />
-                    </TouchableOpacity>
-                    <View style={pickerStyles.timeInputBox}>
-                      <Text style={pickerStyles.timeValueText}>{minute.toString().padStart(2, '0')}</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => adjustMinute(-1)} style={pickerStyles.arrowBtn}>
-                      <Ionicons name="chevron-down" size={18} color="#44403C" />
-                    </TouchableOpacity>
-                    <Text style={pickerStyles.timeLabel}>Min</Text>
-                  </View>
-
-                  {/* AM/PM */}
-                  <View style={[pickerStyles.timeBlock, { justifyContent: 'center' }]}>
-                    <TouchableOpacity 
-                      onPress={() => setAmPm(prev => prev === "AM" ? "PM" : "AM")} 
-                      style={[pickerStyles.ampmBtn, pickerStyles.ampmBtnActive]}
-                    >
-                      <Text style={pickerStyles.ampmBtnTextActive}>{amPm}</Text>
-                    </TouchableOpacity>
-                    <Text style={[pickerStyles.timeLabel, { marginTop: 12 }]}>AM/PM</Text>
-                  </View>
-                </View>
 
                 {/* Summary Display */}
-                <View style={pickerStyles.summaryCard}>
-                  <Text style={pickerStyles.summaryLabel}>Selected Date-Time:</Text>
+                <View style={[pickerStyles.summaryCard, { marginTop: 16 }]}>
+                  <Text style={pickerStyles.summaryLabel}>Selected Date:</Text>
                   <Text style={pickerStyles.summaryValue}>{formatSummaryStr()}</Text>
                 </View>
               </View>
@@ -327,7 +269,7 @@ const pickerStyles = StyleSheet.create({
   modalContainer: {
     backgroundColor: '#fff',
     borderRadius: 20,
-    width: 620,
+    width: 380,
     maxWidth: '95%',
     padding: 24,
     ...Platform.select({
@@ -674,16 +616,37 @@ const [artistSearch, setArtistSearch] = useState("");
   const getLocalDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
   const formatDateTime = (date: Date) => {
-    const d = date.getDate().toString().padStart(2, '0');
-    const m = (date.getMonth() + 1).toString().padStart(2, '0');
-    const y = date.getFullYear();
-    let hours = date.getHours();
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    hours = hours ? hours : 12;
-    const h = hours.toString().padStart(2, '0');
-    return `${d}-${m}-${y} ${h}:${minutes} ${ampm}`;
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Singapore',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    const parts = formatter.formatToParts(date);
+    const day = parts.find(p => p.type === 'day')?.value || '00';
+    const month = parts.find(p => p.type === 'month')?.value || '00';
+    const year = parts.find(p => p.type === 'year')?.value || '0000';
+    const hour = parts.find(p => p.type === 'hour')?.value || '00';
+    const minute = parts.find(p => p.type === 'minute')?.value || '00';
+    const dayPeriod = (parts.find(p => p.type === 'dayPeriod')?.value || 'AM').toUpperCase();
+    return `${day}-${month}-${year} ${hour}:${minute} ${dayPeriod}`;
+  };
+
+  const formatDateOnly = (date: Date) => {
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Singapore',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+    const parts = formatter.formatToParts(date);
+    const day = parts.find(p => p.type === 'day')?.value || '00';
+    const month = parts.find(p => p.type === 'month')?.value || '00';
+    const year = parts.find(p => p.type === 'year')?.value || '0000';
+    return `${day}-${month}-${year}`;
   };
 
   const handleCountChange = (denomStr: string, val: string) => {
@@ -1167,8 +1130,8 @@ const loadDishes = async () => {
         }
       };
 
-      const fromDateStr = formatDateTime(fromDate);
-      const toDateStr = formatDateTime(toDate);
+      const fromDateStr = formatDateOnly(fromDate);
+      const toDateStr = formatDateOnly(toDate);
       const cashInTotalSum = totalCashInEntries + transactions.filter(t => t.TransactionType === "IN").reduce((sum, t) => sum + (parseFloat(t.Amount) || 0), 0);
 
       // 2. Format HTML aligned to 80mm width with centered print-out look
@@ -1235,7 +1198,7 @@ const loadDishes = async () => {
                 <div class="info-row">${toDateStr}</div>
                 <br/>
                 <div class="bold">Generated:</div>
-                <div class="info-row">${formatDateTime(new Date())}</div>
+                <div class="info-row">${formatDateOnly(new Date())}</div>
               </div>
 
               <div class="divider">========================================</div>
@@ -1352,7 +1315,7 @@ const loadDishes = async () => {
             text += "[L]to\n";
             text += `[L]${toDateStr}\n\n`;
             text += "[L]<B>Generated:</B>\n";
-            text += `[L]${formatDateTime(new Date())}\n\n`;
+            text += `[L]${formatDateOnly(new Date())}\n\n`;
 
             text += "[C]========================================\n";
             text += "[C]<B>SALES SUMMARY</B>\n";
@@ -1422,7 +1385,7 @@ const loadDishes = async () => {
             await SunmiModule.printText("to\n");
             await SunmiModule.printText(`${toDateStr}\n\n`);
             await SunmiModule.printText("Generated:\n");
-            await SunmiModule.printText(`${formatDateTime(new Date())}\n\n`);
+            await SunmiModule.printText(`${formatDateOnly(new Date())}\n\n`);
 
             const formatTwoCols32 = (left: string, right: string) => {
               const spaceCount = 32 - left.length - right.length;
@@ -1574,7 +1537,7 @@ const loadDishes = async () => {
                 onPress={() => setShowFromPicker(true)}
               >
                 <Text style={{ fontFamily: Fonts.bold, color: Theme.textPrimary, fontSize: 11, flexShrink: 1 }} numberOfLines={1}>
-                  {formatDateTime(fromDate)}
+                  {formatDateOnly(fromDate)}
                 </Text>
                 <Ionicons name="calendar-outline" size={13} color="#6B7280" />
               </TouchableOpacity>
@@ -1605,7 +1568,7 @@ const loadDishes = async () => {
                 onPress={() => setShowToPicker(true)}
               >
                 <Text style={{ fontFamily: Fonts.bold, color: Theme.textPrimary, fontSize: 11, flexShrink: 1 }} numberOfLines={1}>
-                  {formatDateTime(toDate)}
+                  {formatDateOnly(toDate)}
                 </Text>
                 <Ionicons name="calendar-outline" size={13} color="#6B7280" />
               </TouchableOpacity>
@@ -1616,27 +1579,19 @@ const loadDishes = async () => {
               onClose={() => setShowFromPicker(false)}
               selectedDate={fromDate}
               onApply={(date) => setFromDate(date)}
-              title="Select Start Date & Time"
+              title="Select Start Date"
             />
             <CustomDateTimePicker
               visible={showToPicker}
               onClose={() => setShowToPicker(false)}
               selectedDate={toDate}
               onApply={(date) => setToDate(date)}
-              title="Select End Date & Time"
+              title="Select End Date"
             />
           </View>
 
           {isTablet && (
             <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-              <TouchableOpacity
-                style={[styles.confirmBtn, { backgroundColor: Theme.primary, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
-                onPress={() => router.push("/menu/rewardMaster")}
-              >
-                <Ionicons name="gift-outline" size={18} color="#fff" />
-                <Text style={styles.confirmBtnText}>Rewards</Text>
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.confirmBtn, { paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
                 onPress={handlePrintReport}

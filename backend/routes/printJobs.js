@@ -89,9 +89,20 @@ router.get('/pending', authenticateBridge, async (req, res) => {
         ORDER BY CreatedOn ASC
       `);
 
-    const jobs = result.recordset || [];
+    let jobs = result.recordset || [];
 
     if (jobs.length > 0) {
+      // Decode Base64 cash drawer trigger to binary string
+      jobs = jobs.map(job => {
+        if (job.Content === 'G3AAGRk=') {
+          return {
+            ...job,
+            Content: '\x1B\x70\x00\x19\x19'
+          };
+        }
+        return job;
+      });
+
       // Mark them as PROCESSING
       const jobIds = jobs.map(j => `'${j.JobId}'`).join(',');
       const updateReq = new sql.Request(transaction);

@@ -53,7 +53,7 @@ function SocketToastListener() {
       }
     };
 
-    const handleCustomerRequest = (payload: { tableNo: string; type: string }) => {
+    const handleCustomerRequest = (payload: { tableNo: string; type: string; tableId?: string }) => {
       const user = useAuthStore.getState().user;
       if (user) {
         const { useNotificationStore } = require("../stores/notificationStore");
@@ -72,6 +72,129 @@ function SocketToastListener() {
           type: "warning",
           duration: 5000,
         });
+
+        // 🖨️ Auto-print checkout bill/invoice if customer requested bill (Pay at Cashier)
+        if (payload.type === "Request Bill" && payload.tableId) {
+          (async () => {
+            try {
+              const { useGeneralSettingsStore } = require("../stores/generalSettingsStore");
+              const autoPrintEnabled = useGeneralSettingsStore.getState().settings.enableQROrderAutoPrint;
+              if (autoPrintEnabled === false) {
+                console.log("ℹ️ Auto-print for QR checkout is disabled in general settings.");
+                return;
+              }
+
+              const token = useAuthStore.getState().token;
+              const res = await fetch(`${API_URL}/api/orders/cart/${payload.tableId}`, {
+                headers: token ? { "Authorization": `Bearer ${token}` } : {}
+              });
+              if (!res.ok) return;
+              const data = await res.json();
+              const rawItems = Array.isArray(data) ? data : (data.items || []);
+              
+              // Filter out voided items
+              const activeItems = rawItems.filter((item: any) => {
+                const status = (item.status || item.Status || "").toUpperCase();
+                return status !== "VOIDED" && Number(item.StatusCode || item.statusCode) !== 0;
+              });
+
+              if (activeItems.length === 0) return;
+
+              const { useCompanySettingsStore } = require("../stores/companySettingsStore");
+              const settings = useCompanySettingsStore.getState().settings;
+
+              const serviceChargePercentage = Number(settings?.serviceChargePercentage ?? settings?.ServiceChargePercentage ?? 0);
+              const gstPercentage = Number(settings?.gstPercentage ?? settings?.GSTPercentage ?? 0);
+              const takeawayChargeRate = Number(settings?.takeawayCharges ?? settings?.TakeawayCharges ?? settings?.takeawayCharge ?? settings?.TakeawayCharge ?? 0);
+
+              let subtotal = 0;
+              let scEligibleSubtotal = 0;
+              let takeawayItemsQty = 0;
+
+              const cartItems = activeItems.map((item: any) => {
+                const qty = Number(item.qty ?? item.Quantity ?? item.quantity ?? 1);
+                const price = Number(item.price ?? item.Cost ?? item.Price ?? 0);
+                const isTakeaway = !!(item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway);
+                const isServiceCharge = !isTakeaway && (Number(item.isServiceCharge) === 1 || item.isServiceCharge === true || Number(item.IsServiceCharge) === 1 || item.IsServiceCharge === true);
+                
+                subtotal += price * qty;
+                if (isServiceCharge) {
+                  scEligibleSubtotal += price * qty;
+                }
+                if (isTakeaway) {
+                  takeawayItemsQty += qty;
+                }
+
+                let comboSelections = item.comboSelections || item.ComboSelections;
+                if (typeof item.ComboDetailsJSON === 'string' && item.ComboDetailsJSON) {
+                  try {
+                    const parsed = JSON.parse(item.ComboDetailsJSON);
+                    comboSelections = Array.isArray(parsed) ? parsed : parsed.groups;
+                  } catch (e) {}
+                } else if (Array.isArray(item.ComboDetailsJSON)) {
+                  comboSelections = item.ComboDetailsJSON;
+                }
+
+                let modifiers = item.modifiers || item.Modifiers || [];
+                if (typeof modifiers === 'string') {
+                  try { modifiers = JSON.parse(modifiers); } catch (e) { modifiers = []; }
+                }
+
+                return {
+                  lineItemId: item.lineItemId || item.LineItemId,
+                  id: item.id || item.DishId,
+                  name: item.name || item.DishName || "",
+                  price: price,
+                  qty: qty,
+                  isTakeaway: isTakeaway,
+                  isServiceCharge: isServiceCharge,
+                  modifiers: modifiers.map((m: any) => ({
+                    ModifierId: m.ModifierId || m.ModifierID || m.id,
+                    ModifierName: m.ModifierName || m.modifierName || m.name || "",
+                    Price: Number(m.Price || m.price || 0),
+                  })),
+                  comboSelections: comboSelections,
+                };
+              });
+
+              const orderDiscountAmt = Number(data.orderDiscount?.amount || 0);
+              const orderNetSubtotal = Math.max(0, subtotal - orderDiscountAmt);
+
+              const takeawayChargeAmt = takeawayItemsQty * takeawayChargeRate;
+              const serviceChargeAmt = Math.max(0, scEligibleSubtotal - orderDiscountAmt) * (serviceChargePercentage / 100);
+              const totalBeforeGst = orderNetSubtotal + serviceChargeAmt + takeawayChargeAmt;
+              const gstAmt = totalBeforeGst * (gstPercentage / 100);
+              const grandTotal = totalBeforeGst + gstAmt;
+
+              const saleData = {
+                items: cartItems,
+                total: grandTotal,
+                subtotal: subtotal,
+                discount: {
+                  applied: orderDiscountAmt > 0,
+                  type: "fixed" as const,
+                  value: orderDiscountAmt,
+                  amount: orderDiscountAmt,
+                },
+                orderId: data.currentOrderId || data.orderId || payload.tableNo,
+                tableNo: payload.tableNo,
+                waiterName: "QR Customer",
+                date: new Date(),
+                isCheckout: true,
+                serviceCharge: serviceChargeAmt,
+                takeawayCharge: takeawayChargeAmt,
+              };
+
+              const UniversalPrinter = require("../components/UniversalPrinter").default;
+              await UniversalPrinter.printCheckoutBill(
+                saleData,
+                user?.userId || "SYSTEM",
+              );
+            } catch (err) {
+              console.warn("Auto-print on cashier request failed:", err);
+            }
+          })();
+        }
       }
     };
 

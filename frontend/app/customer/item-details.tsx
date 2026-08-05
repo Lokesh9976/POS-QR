@@ -295,6 +295,32 @@ export default function CustomerItemDetailsScreen() {
     }
   };
 
+  const handleAddDirectly = async () => {
+    if (!dish) return;
+
+    const cartItemData = {
+      id: dish.DishId,
+      name: dish.Name,
+      price: Number(dish.Price || 0) + selectedModifiers.reduce((sum, m) => sum + Number(m.Price || 0), 0),
+      basePrice: Number(dish.Price || 0),
+      qty: quantity,
+      isCombo: false,
+      modifiers: selectedModifiers.map((m) => ({
+        ModifierId: m.ModifierID,
+        ModifierName: m.ModifierName,
+        Price: Number(m.Price || 0),
+      })),
+      isTakeaway: false,
+    };
+
+    const lineItemId = await addToCartGlobal(cartItemData as any);
+    if (lineItemId) {
+      router.back();
+    } else {
+      Alert.alert("Error", "Could not add item to cart. Make sure your table is active.");
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
@@ -324,9 +350,11 @@ export default function CustomerItemDetailsScreen() {
     groupedModifiers[groupName].push(mod);
   });
 
+  const showSkipButton = !!(comboConfig && comboConfig.groups && comboConfig.groups.length > 0 && Number(dish?.Price || 0) > 0);
+
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, showSkipButton && { paddingBottom: 195 }]}>
         {/* Cover Photo */}
         <View style={styles.imageContainer}>
           <Image
@@ -461,24 +489,46 @@ export default function CustomerItemDetailsScreen() {
       </ScrollView>
 
       {/* Footer checkout/quantity actions */}
-      <View style={styles.footer}>
-        <View style={styles.quantityContainer}>
-          <TouchableOpacity
-            style={styles.qtyBtn}
-            onPress={() => setQuantity(Math.max(1, quantity - 1))}
-          >
-            <Ionicons name="remove" size={20} color="#0F172A" />
-          </TouchableOpacity>
-          <Text style={styles.qtyText}>{quantity}</Text>
-          <TouchableOpacity style={styles.qtyBtn} onPress={() => setQuantity(quantity + 1)}>
-            <Ionicons name="add" size={20} color="#0F172A" />
+      <View style={[styles.footer, showSkipButton && { flexDirection: "column", gap: 12, paddingBottom: 24 }]}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+          <View style={styles.quantityContainer}>
+            <TouchableOpacity
+              style={styles.qtyBtn}
+              onPress={() => setQuantity(Math.max(1, quantity - 1))}
+            >
+              <Ionicons name="remove" size={20} color="#0F172A" />
+            </TouchableOpacity>
+            <Text style={styles.qtyText}>{quantity}</Text>
+            <TouchableOpacity style={styles.qtyBtn} onPress={() => setQuantity(quantity + 1)}>
+              <Ionicons name="add" size={20} color="#0F172A" />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.addToCartBtn} onPress={handleAddToCart}>
+            <Text style={styles.addToCartText}>Add to Cart</Text>
+            <Text style={styles.addToCartPrice}>${calculateTotalPrice().toFixed(2)}</Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.addToCartBtn} onPress={handleAddToCart}>
-          <Text style={styles.addToCartText}>Add to Cart</Text>
-          <Text style={styles.addToCartPrice}>${calculateTotalPrice().toFixed(2)}</Text>
-        </TouchableOpacity>
+        {showSkipButton && (
+          <TouchableOpacity
+            style={{
+              width: "100%",
+              backgroundColor: "#F1F5F9",
+              paddingVertical: 14,
+              borderRadius: 14,
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: 4,
+            }}
+            onPress={handleAddDirectly}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: "#475569", fontWeight: "bold", fontSize: 15 }}>
+              Add Base Combo Directly (Skip Selections)
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Premium Custom Alert Modal */}

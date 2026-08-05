@@ -102,6 +102,7 @@ export default function GeneralSettingsScreen() {
   const [showRewardPoints, setShowRewardPoints] = useState(settings.showRewardPoints !== undefined ? settings.showRewardPoints : true);
   const [showPromoCode, setShowPromoCode] = useState(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
   const [enableOnlinePayment, setEnableOnlinePayment] = useState(settings.enableOnlinePayment !== undefined ? settings.enableOnlinePayment : true);
+  const [enableQROrderAutoPrint, setEnableQROrderAutoPrint] = useState(settings.enableQROrderAutoPrint !== undefined ? settings.enableQROrderAutoPrint : true);
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordValue, setPasswordValue] = useState("");
@@ -127,6 +128,7 @@ export default function GeneralSettingsScreen() {
     setShowRewardPoints(settings.showRewardPoints !== undefined ? settings.showRewardPoints : true);
     setShowPromoCode(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
     setEnableOnlinePayment(settings.enableOnlinePayment !== undefined ? settings.enableOnlinePayment : true);
+    setEnableQROrderAutoPrint(settings.enableQROrderAutoPrint !== undefined ? settings.enableQROrderAutoPrint : true);
 
     let initialCheckoutFlow = settings.enableCheckoutFlow;
     let initialDirectProcess = settings.enableDirectProcessToPay;
@@ -213,6 +215,7 @@ export default function GeneralSettingsScreen() {
       showRewardPoints,
       showPromoCode,
       enableOnlinePayment,
+      enableQROrderAutoPrint,
     });
     setSaving(false);
 
@@ -224,112 +227,143 @@ export default function GeneralSettingsScreen() {
     }
   };
 
-  const settingsList = [
+  const sections = [
     {
-      title: "QR Online Payment",
-      desc: "Allow QR ordering customers to pay online (PayNow). When OFF, orders use Pay at Cashier.",
-      icon: "card-outline",
-      value: enableOnlinePayment,
-      onToggle: setEnableOnlinePayment,
+      title: "QR Ordering & Payments",
+      icon: "qr-code-outline",
+      items: [
+        {
+          title: "QR Order Auto Print Bill",
+          desc: "Automatically print the guest checkout bill/invoice on the cashier printer when a customer requests bill/checkout from QR menu.",
+          icon: "print-outline",
+          value: enableQROrderAutoPrint,
+          onToggle: setEnableQROrderAutoPrint,
+        },
+        {
+          title: "QR Online Payment",
+          desc: "Allow QR ordering customers to pay online (PayNow). When OFF, orders use Pay at Cashier.",
+          icon: "card-outline",
+          value: enableOnlinePayment,
+          onToggle: setEnableOnlinePayment,
+        },
+      ]
     },
     {
-      title: "KOT (Kitchen Order Ticket)",
-      desc: "Enable kitchen ticket printing.",
-      icon: "receipt-outline",
-      value: enableKOT,
-      onToggle: setEnableKOT,
+      title: "Kitchen & Order Routing",
+      icon: "restaurant-outline",
+      items: [
+        {
+          title: "KOT (Kitchen Order Ticket)",
+          desc: "Enable kitchen ticket printing.",
+          icon: "receipt-outline",
+          value: enableKOT,
+          onToggle: setEnableKOT,
+        },
+        {
+          title: "KDS (Kitchen Display System)",
+          desc: "Show kitchen display screen.",
+          icon: "desktop-outline",
+          value: enableKDS,
+          onToggle: setEnableKDS,
+        },
+        {
+          title: "KDS Printer Button",
+          desc: "Show the PRINT button on every order card in KDS screen.",
+          icon: "print-outline",
+          value: enableKDSPrint,
+          onToggle: setEnableKDSPrint,
+        },
+      ]
     },
     {
-      title: "KDS (Kitchen Display System)",
-      desc: "Show kitchen display screen.",
-      icon: "desktop-outline",
-      value: enableKDS,
-      onToggle: setEnableKDS,
-    },
-    {
-      title: "Checkout Bill",
-      desc: "Enable checkout receipt printing.",
+      title: "Billing & Cash Control",
       icon: "wallet-outline",
-      value: enableCheckoutBill,
-      onToggle: setEnableCheckoutBill,
+      items: [
+        {
+          title: "Checkout Bill",
+          desc: "Enable checkout receipt printing.",
+          icon: "wallet-outline",
+          value: enableCheckoutBill,
+          onToggle: setEnableCheckoutBill,
+        },
+        {
+          title: "Enable Checkout Flow",
+          desc: "Enable order summary checkout step.",
+          icon: "git-compare-outline",
+          value: enableCheckoutFlow,
+          onToggle: handleToggleCheckoutFlow,
+        },
+        {
+          title: "Enable Direct Process To Pay",
+          desc: "Show 'Process To Pay' shortcut button in Cart Sidebar.",
+          icon: "card-outline",
+          value: enableDirectProcessToPay,
+          onToggle: handleToggleDirectProcessToPay,
+        },
+        {
+          title: "Enable Cash Drawer Module",
+          desc: "Enable checkout cashbox opening triggers.",
+          icon: "cash-outline",
+          value: enableCashDrawer,
+          onToggle: handleToggleCashDrawer,
+        },
+      ]
     },
     {
-      title: "Enable Checkout Flow",
-      desc: "Enable order summary checkout step.",
-      icon: "git-compare-outline",
-      value: enableCheckoutFlow,
-      onToggle: handleToggleCheckoutFlow,
-    },
-    {
-      title: "Enable Direct Process To Pay",
-      desc: "Show 'Process To Pay' shortcut button in Cart Sidebar.",
-      icon: "card-outline",
-      value: enableDirectProcessToPay,
-      onToggle: handleToggleDirectProcessToPay,
-    },
-    {
-      title: "Customer-Side Display",
-      desc: "Enable/disable secondary customer screen sync.",
-      icon: "tv-outline",
-      value: customerSideDisplay,
-      onToggle: setCustomerSideDisplay,
-    },
-    {
-      title: "Guest Details Popup",
-      desc: "Show guest info details popup before entering order screen.",
-      icon: "people-outline",
-      value: enableGuestDetailsPopup,
-      onToggle: setEnableGuestDetailsPopup,
-    },
-    {
-      title: "Enable Cash Drawer Module",
-      desc: "Enable checkout cashbox opening triggers.",
-      icon: "wallet-outline",
-      value: enableCashDrawer,
-      onToggle: handleToggleCashDrawer,
-    },
-    {
-      title: "SVC Identification",
-      desc: "Highlight Service (SVC) items with red identification.",
-      icon: "pricetag-outline",
-      value: SVCIdentification,
-      onToggle: setSVCIdentification,
-    },
-    {
-      title: "KDS Printer Button",
-      desc: "Show the PRINT button on every order card in KDS screen.",
-      icon: "print-outline",
-      value: enableKDSPrint,
-      onToggle: setEnableKDSPrint,
-    },
-    {
-      title: "Combo Feature",
-      desc: "Enable combo menu items and selections wizard.",
-      icon: "fast-food-outline",
-      value: enableCombo,
-      onToggle: setEnableCombo,
-    },
-    {
-      title: "Loyalty Feature",
-      desc: "Show the Loyalty button in the POS Summary screen.",
-      icon: "ribbon-outline",
-      value: showLoyalty,
-      onToggle: setShowLoyalty,
-    },
-    {
-      title: "Reward Points Feature",
-      desc: "Show the Reward Points button in the POS Summary screen.",
-      icon: "gift-outline",
-      value: showRewardPoints,
-      onToggle: setShowRewardPoints,
-    },
-    {
-      title: "Promo Code Feature",
-      desc: "Show the Promo Code button in the POS Summary screen.",
-      icon: "pricetag-outline",
-      value: showPromoCode,
-      onToggle: setShowPromoCode,
-    },
+      title: "App Features & Display",
+      icon: "apps-outline",
+      items: [
+        {
+          title: "Customer-Side Display",
+          desc: "Enable/disable secondary customer screen sync.",
+          icon: "tv-outline",
+          value: customerSideDisplay,
+          onToggle: setCustomerSideDisplay,
+        },
+        {
+          title: "Guest Details Popup",
+          desc: "Show guest info details popup before entering order screen.",
+          icon: "people-outline",
+          value: enableGuestDetailsPopup,
+          onToggle: setEnableGuestDetailsPopup,
+        },
+        {
+          title: "SVC Identification",
+          desc: "Highlight Service (SVC) items with red identification.",
+          icon: "pricetag-outline",
+          value: SVCIdentification,
+          onToggle: setSVCIdentification,
+        },
+        {
+          title: "Combo Feature",
+          desc: "Enable combo menu items and selections wizard.",
+          icon: "fast-food-outline",
+          value: enableCombo,
+          onToggle: setEnableCombo,
+        },
+        {
+          title: "Loyalty Feature",
+          desc: "Show the Loyalty button in the POS Summary screen.",
+          icon: "ribbon-outline",
+          value: showLoyalty,
+          onToggle: setShowLoyalty,
+        },
+        {
+          title: "Reward Points Feature",
+          desc: "Show the Reward Points button in the POS Summary screen.",
+          icon: "gift-outline",
+          value: showRewardPoints,
+          onToggle: setShowRewardPoints,
+        },
+        {
+          title: "Promo Code Feature",
+          desc: "Show the Promo Code button in the POS Summary screen.",
+          icon: "pricetag-outline",
+          value: showPromoCode,
+          onToggle: setShowPromoCode,
+        },
+      ]
+    }
   ];
 
   return (
@@ -363,29 +397,37 @@ export default function GeneralSettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.gridContainer}>
-          {settingsList.map((item, index) => (
-            <View
-              key={index}
-              style={[
-                styles.settingCard,
-                item.value && styles.settingCardActive,
-                isTablet ? styles.cardTablet : styles.cardMobile,
-              ]}
-            >
-              <View style={styles.cardLeft}>
-                <View style={styles.cardHeaderRow}>
-                  <View style={[styles.iconWrapper, item.value ? styles.iconWrapperActive : styles.iconWrapperInactive]}>
-                    <Ionicons name={item.icon as any} size={18} color={item.value ? Theme.primary : Theme.textSecondary} />
-                  </View>
-                  <Text style={styles.settingTitle} numberOfLines={1}>{item.title}</Text>
-                </View>
-                <Text style={styles.settingDesc}>{item.desc}</Text>
-              </View>
-              <CustomSwitch value={item.value} onValueChange={item.onToggle} />
+        {sections.map((section, sIdx) => (
+          <View key={sIdx} style={styles.sectionContainer}>
+            <View style={styles.sectionHeader}>
+              <Ionicons name={section.icon as any} size={20} color={Theme.primary} />
+              <Text style={styles.sectionTitleText}>{section.title}</Text>
             </View>
-          ))}
-        </View>
+            <View style={styles.gridContainer}>
+              {section.items.map((item, index) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.settingCard,
+                    item.value && styles.settingCardActive,
+                    isTablet ? styles.cardTablet : styles.cardMobile,
+                  ]}
+                >
+                  <View style={styles.cardLeft}>
+                    <View style={styles.cardHeaderRow}>
+                      <View style={[styles.iconWrapper, item.value ? styles.iconWrapperActive : styles.iconWrapperInactive]}>
+                        <Ionicons name={item.icon as any} size={18} color={item.value ? Theme.primary : Theme.textSecondary} />
+                      </View>
+                      <Text style={styles.settingTitle} numberOfLines={1}>{item.title}</Text>
+                    </View>
+                    <Text style={styles.settingDesc}>{item.desc}</Text>
+                  </View>
+                  <CustomSwitch value={item.value} onValueChange={item.onToggle} />
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
       </ScrollView>
 
       {/* Footer */}
@@ -518,6 +560,24 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 24,
   },
+  sectionContainer: {
+    marginBottom: 28,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+    paddingBottom: 8,
+  },
+  sectionTitleText: {
+    fontSize: 16,
+    fontFamily: Fonts.bold,
+    color: Theme.textPrimary,
+  },
   gridContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -540,13 +600,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   settingCardActive: {
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFDFB",
     borderWidth: 1,
     borderColor: "#FF6B00",
-    borderLeftWidth: 4,
-    borderLeftColor: "#FF6B00",
     shadowColor: "#FF6B00",
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.05,
     shadowRadius: 10,
   },
   cardMobile: {
@@ -554,6 +612,7 @@ const styles = StyleSheet.create({
   },
   cardTablet: {
     width: "49%",
+    minHeight: 110,
   },
   cardLeft: {
     flex: 1,

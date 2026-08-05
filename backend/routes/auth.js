@@ -63,7 +63,7 @@ router.post("/login", async (req, res) => {
                   END
               ) AS AvailableCredit
           FROM MemberMaster M
-          WHERE M.Name = @username
+          WHERE (M.Name = @username OR M.Email = @username)
             AND M.Password = @password
             AND M.IsActive = 1
         `);

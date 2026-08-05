@@ -19,6 +19,7 @@ export interface GeneralSettings {
   showRewardPoints: boolean;
   showPromoCode: boolean;
   enableOnlinePayment: boolean;
+  enableQROrderAutoPrint: boolean;
 }
 
 interface GeneralSettingsState {
@@ -47,6 +48,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
         showRewardPoints: true,
         showPromoCode: true,
         enableOnlinePayment: true,
+        enableQROrderAutoPrint: true,
       },
       loading: false,
 
@@ -75,6 +77,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
                 showRewardPoints: data.ShowRewardPoints !== undefined ? Boolean(data.ShowRewardPoints) : true,
                 showPromoCode: data.ShowPromoCode !== undefined ? Boolean(data.ShowPromoCode) : true,
                 enableOnlinePayment: data.EnableOnlinePayment !== undefined ? Boolean(data.EnableOnlinePayment) : true,
+                enableQROrderAutoPrint: data.EnableQROrderAutoPrint !== undefined ? Boolean(data.EnableQROrderAutoPrint) : true,
               },
             }));
           }
