@@ -797,25 +797,20 @@ async function syncTableStatus(req, tableId) {
   if (!tableId || tableId === "undefined" || tableId === "null") return null;
   const cleanId = String(tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
 
-  const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
-  if (!isValidUUID) {
-    console.log(`[syncTableStatus] Skipping sync for non-UUID tableId: ${cleanId}`);
-    return null;
-  }
-
   const pool = await poolPromise;
-  const res = await pool.request().input("tid", sql.UniqueIdentifier, cleanId)
+  const res = await pool.request().input("tid", sql.VarChar(50), cleanId)
     .query(`
-    DECLARE @ActualOrderId UNIQUEIDENTIFIER, @ActualOrderNo NVARCHAR(50), @TableNo VARCHAR(20), @count INT, @total DECIMAL(18,2);
+    DECLARE @ActualOrderId UNIQUEIDENTIFIER, @ActualOrderNo NVARCHAR(50), @TableNo VARCHAR(50), @count INT, @total DECIMAL(18,2);
     
-    SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableId = @tid;
+    SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid;
+    IF @TableNo IS NULL SET @TableNo = @tid;
 
     -- 🚀 ROBUST LOOKUP: Prioritize the CurrentOrderId stored in TableMaster to avoid ghost orders
     SELECT TOP 1 @ActualOrderId = OrderId, @ActualOrderNo = OrderNumber
     FROM RestaurantOrderCur 
-    WHERE (OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur h2 WHERE h2.OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableId = @tid) AND h2.isOrderClosed = 0))
-    OR (Tableno = @TableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL))
-    ORDER BY CASE WHEN OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableId = @tid) THEN 0 ELSE 1 END, CreatedOn DESC;
+    WHERE (OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur h2 WHERE h2.OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid) AND h2.isOrderClosed = 0))
+    OR ((Tableno = @TableNo OR Tableno = @tid) AND (isOrderClosed = 0 OR isOrderClosed IS NULL))
+    ORDER BY CASE WHEN OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid) THEN 0 ELSE 1 END, CreatedOn DESC;
 
     DECLARE @TakeawayOverride INT = 0;
     DECLARE @SCOverride INT = 0;
@@ -914,7 +909,7 @@ async function syncTableStatus(req, tableId) {
                     END,
         CurrentOrderId = @ActualOrderNo,
         ModifiedOn = GETDATE()
-    WHERE TableId = @tid;
+    WHERE TableId = @tid OR TableNumber = @tid;
 
     SELECT 
       Status, entry_status AS entryStatus, PAYMENT_STATUS AS paymentStatus, TotalAmount, CONVERT(VARCHAR, StartTime, 126) AS StartTime, 
