@@ -802,15 +802,15 @@ async function syncTableStatus(req, tableId) {
     .query(`
     DECLARE @ActualOrderId UNIQUEIDENTIFIER, @ActualOrderNo NVARCHAR(50), @TableNo VARCHAR(50), @count INT, @total DECIMAL(18,2);
     
-    SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid;
+    SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER));
     IF @TableNo IS NULL SET @TableNo = @tid;
 
     -- 🚀 ROBUST LOOKUP: Prioritize the CurrentOrderId stored in TableMaster to avoid ghost orders
     SELECT TOP 1 @ActualOrderId = OrderId, @ActualOrderNo = OrderNumber
     FROM RestaurantOrderCur 
-    WHERE (OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur h2 WHERE h2.OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid) AND h2.isOrderClosed = 0))
+    WHERE (OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur h2 WHERE h2.OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))) AND h2.isOrderClosed = 0))
     OR ((Tableno = @TableNo OR Tableno = @tid) AND (isOrderClosed = 0 OR isOrderClosed IS NULL))
-    ORDER BY CASE WHEN OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid) THEN 0 ELSE 1 END, CreatedOn DESC;
+    ORDER BY CASE WHEN OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))) THEN 0 ELSE 1 END, CreatedOn DESC;
 
     DECLARE @TakeawayOverride INT = 0;
     DECLARE @SCOverride INT = 0;
@@ -909,7 +909,7 @@ async function syncTableStatus(req, tableId) {
                     END,
         CurrentOrderId = @ActualOrderNo,
         ModifiedOn = GETDATE()
-    WHERE TableId = @tid OR TableNumber = @tid;
+    WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER));
 
     SELECT 
       Status, entry_status AS entryStatus, PAYMENT_STATUS AS paymentStatus, TotalAmount, CONVERT(VARCHAR, StartTime, 126) AS StartTime, 
@@ -923,7 +923,7 @@ async function syncTableStatus(req, tableId) {
         ELSE 0 
       END AS isHoldOvertime,
       CONVERT(VARCHAR, ModifiedOn, 126) as ModifiedOn
-    FROM TableMaster WHERE TableId = @tid;
+    FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER));
   `);
 
   const updated = res.recordset[0];
@@ -1018,7 +1018,7 @@ router.post("/save-cart", async (req, res) => {
       // NEVER close open orders (isOrderClosed=1) or reset TableMaster.Status=0 during a cart save!
       const sentCheckRes = await pool.request().input("tidForCheck", sql.VarChar(50), cleanId).query(`
         DECLARE @TableNoCheck VARCHAR(50);
-        SELECT TOP 1 @TableNoCheck = TableNumber FROM TableMaster WHERE TableId = @tidForCheck OR TableNumber = @tidForCheck;
+        SELECT TOP 1 @TableNoCheck = TableNumber FROM TableMaster WHERE TableNumber = @tidForCheck OR (TRY_CAST(@tidForCheck AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tidForCheck AS UNIQUEIDENTIFIER));
         IF @TableNoCheck IS NULL SET @TableNoCheck = @tidForCheck;
 
         SELECT COUNT(*) AS SentCount
@@ -1038,7 +1038,7 @@ router.post("/save-cart", async (req, res) => {
         console.log(`[TRACE] [${now}] [SAVE-CART] Clearing unsent draft items for Table ${cleanId}`);
         await pool.request().input("tid", sql.VarChar(50), cleanId).query(`
             DECLARE @TableNo VARCHAR(50);
-            SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid;
+            SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER));
             IF @TableNo IS NULL SET @TableNo = @tid;
 
             -- Delete ONLY unsent StatusCode=1 draft items for open orders on this table
@@ -1207,7 +1207,7 @@ router.post("/send", async (req, res) => {
               SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
               FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
             ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
-            WHERE (h.Tableno = (SELECT TableNumber FROM TableMaster WHERE TableId = @tableNo)
+            WHERE (h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableId = @tableNo OR TableNumber = @tableNo)
               OR h.Tableno = @tableNo) 
               AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL) 
               AND d.StatusCode <> 0`);
@@ -1269,7 +1269,7 @@ router.post("/send", async (req, res) => {
           .input("tableNoCheck", sql.VarChar(50), String(cleanId))
           .query(`
             DECLARE @RealTableNo VARCHAR(50);
-            SELECT TOP 1 @RealTableNo = TableNumber FROM TableMaster WHERE TableId = @tableNoCheck OR TableNumber = @tableNoCheck;
+            SELECT TOP 1 @RealTableNo = TableNumber FROM TableMaster WHERE TableNumber = @tableNoCheck OR (TRY_CAST(@tableNoCheck AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tableNoCheck AS UNIQUEIDENTIFIER));
             IF @RealTableNo IS NULL SET @RealTableNo = @tableNoCheck;
 
             SELECT 
@@ -1570,7 +1570,7 @@ router.get("/cart/:tableId", async (req, res) => {
           AND (
             h.Tableno = @tableNo
             OR h.Tableno = @tid
-            OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid)
+            OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER)))
             OR h.OrderNumber = @orderNo
           )
         ORDER BY d.CreatedOn ASC
