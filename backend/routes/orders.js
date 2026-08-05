@@ -1019,53 +1019,45 @@ router.post("/save-cart", async (req, res) => {
     ) {
       currentOrderId = await getOrGenerateOrderId(req, cleanId);
     } else if (!hasItems) {
-      // 🚀 NUCLEAR CLEAR: If saving an empty cart, clear all open orders for this table.
-      // 🛡️ GUARD: First check if the DB has any SENT/READY items — if so, the order is still
-      // active and we must NOT nuke it (clearCart can run with empty local state while DB has data).
+      // 🚀 SAFETY: If saving empty cart, only delete unsent StatusCode=1 draft items for this table.
+      // NEVER close open orders (isOrderClosed=1) or reset TableMaster.Status=0 during a cart save!
       const sentCheckRes = await pool.request().input("tidForCheck", sql.VarChar(50), cleanId).query(`
-        DECLARE @TableNoCheck VARCHAR(20);
-        SELECT TOP 1 @TableNoCheck = TableNumber FROM TableMaster WHERE TableId = @tidForCheck;
+        DECLARE @TableNoCheck VARCHAR(50);
+        SELECT TOP 1 @TableNoCheck = TableNumber FROM TableMaster WHERE TableId = @tidForCheck OR TableNumber = @tidForCheck;
+        IF @TableNoCheck IS NULL SET @TableNoCheck = @tidForCheck;
+
         SELECT COUNT(*) AS SentCount
         FROM RestaurantOrderDetailCur d
         JOIN RestaurantOrderCur h ON h.OrderId = d.OrderId
-        WHERE h.Tableno = @TableNoCheck
+        WHERE (h.Tableno = @TableNoCheck OR h.Tableno = @tidForCheck)
           AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
-          AND d.StatusCode >= 2  -- StatusCode 2=SENT, 3=READY, 4=SERVED
+          AND d.StatusCode >= 2
       `);
       const sentCount = sentCheckRes.recordset[0]?.SentCount || 0;
 
       if (sentCount > 0) {
-        console.log(`[TRACE] [${now}] [SAVE-CART] NUCLEAR CLEAR BLOCKED — DB has ${sentCount} SENT/READY items. Order is still active.`);
-        // Don't nuke — use existing order ID so subsequent sync picks up the right order
+        console.log(`[TRACE] [${now}] [SAVE-CART] DB has ${sentCount} SENT/READY items. Preserving active order.`);
         currentOrderId = orderId || null;
-        nuclearClearWasBlocked = true; // 🛡️ Signal to skip syncToProfessionalTables below
+        nuclearClearWasBlocked = true;
       } else {
-        console.log(`[TRACE] [${now}] [SAVE-CART] NUCLEAR CLEAR for Table ${cleanId} (confirmed: no sent items in DB)`);
+        console.log(`[TRACE] [${now}] [SAVE-CART] Clearing unsent draft items for Table ${cleanId}`);
         await pool.request().input("tid", sql.VarChar(50), cleanId).query(`
-            DECLARE @TableNo VARCHAR(20);
-            SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableId = @tid;
+            DECLARE @TableNo VARCHAR(50);
+            SELECT TOP 1 @TableNo = TableNumber FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid;
+            IF @TableNo IS NULL SET @TableNo = @tid;
 
-            IF @TableNo IS NOT NULL
-            BEGIN
-              -- Delete all unsent items for ALL open orders on this table
-              DELETE FROM RestaurantmodifierdetailCur WHERE OrderDetailId IN (
-                SELECT OrderDetailId FROM RestaurantOrderDetailCur WHERE OrderId IN (
-                  SELECT OrderId FROM RestaurantOrderCur WHERE Tableno = @TableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
-                ) AND StatusCode = 1
-              );
-              DELETE FROM RestaurantOrderDetailCur WHERE OrderId IN (
-                SELECT OrderId FROM RestaurantOrderCur WHERE Tableno = @TableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
-              ) AND StatusCode = 1;
-
-              -- Force close all orders
-              UPDATE RestaurantOrderCur SET isOrderClosed = 1, ModifiedOn = GETDATE() 
-              WHERE Tableno = @TableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL);
-            END
-
-            -- Reset table status
-            UPDATE TableMaster SET Status = 0, entry_status = NULL, CurrentOrderId = NULL, StartTime = NULL, CustomerName = NULL, Pax = NULL WHERE TableId = @tid;
+            -- Delete ONLY unsent StatusCode=1 draft items for open orders on this table
+            DELETE FROM RestaurantmodifierdetailCur WHERE OrderDetailId IN (
+              SELECT OrderDetailId FROM RestaurantOrderDetailCur WHERE OrderId IN (
+                SELECT OrderId FROM RestaurantOrderCur WHERE (Tableno = @TableNo OR Tableno = @tid) AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+              ) AND StatusCode = 1
+            );
+            DELETE FROM RestaurantOrderDetailCur WHERE OrderId IN (
+              SELECT OrderId FROM RestaurantOrderCur WHERE (Tableno = @TableNo OR Tableno = @tid) AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+            ) AND StatusCode = 1;
           `);
-        currentOrderId = null;
+        currentOrderId = orderId || null;
+        nuclearClearWasBlocked = true;
       }
     }
 
@@ -1281,6 +1273,10 @@ router.post("/send", async (req, res) => {
           .input("orderNoCheck", sql.NVarChar(50), finalOrderId)
           .input("tableNoCheck", sql.VarChar(50), String(cleanId))
           .query(`
+            DECLARE @RealTableNo VARCHAR(50);
+            SELECT TOP 1 @RealTableNo = TableNumber FROM TableMaster WHERE TableId = @tableNoCheck OR TableNumber = @tableNoCheck;
+            IF @RealTableNo IS NULL SET @RealTableNo = @tableNoCheck;
+
             SELECT 
               d.OrderDetailId as lineItemId, d.DishId as id, ISNULL(d.SongName,'') as songName, d.Quantity as qty, 
               d.PricePerUnit as price, d.PricePerUnit as basePrice, ISNULL(NULLIF(d.DishName,''), dish.Name) as name,
@@ -1294,7 +1290,7 @@ router.post("/send", async (req, res) => {
             FROM RestaurantOrderDetailCur d 
             JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId 
             LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
-            WHERE (h.OrderNumber = @orderNoCheck OR h.Tableno = @tableNoCheck)
+            WHERE (h.OrderNumber = @orderNoCheck OR h.Tableno = @RealTableNo OR h.Tableno = @tableNoCheck)
               AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
               AND d.StatusCode <> 0
           `);
@@ -1578,7 +1574,8 @@ router.get("/cart/:tableId", async (req, res) => {
           AND ISNULL(d.isSettlement, 0) = 0
           AND (
             h.Tableno = @tableNo
-            OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableId = @tid)
+            OR h.Tableno = @tid
+            OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableId = @tid OR TableNumber = @tid)
             OR h.OrderNumber = @orderNo
           )
         ORDER BY d.CreatedOn ASC
