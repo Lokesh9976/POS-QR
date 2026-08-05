@@ -1868,32 +1868,23 @@ router.post("/checkout", async (req, res) => {
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
-      // Step 1: Move table to Payment Pending (Status 2) and mark items as SERVED (4)
+      // Step 1: Move table to Payment Pending (Status 2)
       await transaction.request().input("tid", sql.UniqueIdentifier, cleanId).query(`
           -- Reduce deadlock victim priority: prefer to lose vs more critical write transactions
           SET DEADLOCK_PRIORITY LOW;
 
           DECLARE @TableNo VARCHAR(50);
-          SELECT @TableNo = TableNumber FROM TableMaster WHERE TableId = @tid;
+          SELECT @TableNo = TableNumber FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER));
 
           -- 1. Update Table Status to Checkout (2)
-          UPDATE TableMaster SET Status = 2, ModifiedOn = GETDATE() WHERE TableId = @tid;
+          UPDATE TableMaster SET Status = 2, ModifiedOn = GETDATE() WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER));
 
-          -- 2. Mark all active items for this table as SERVED (4) so they leave KDS
-          UPDATE d
-          SET d.StatusCode = 4, d.ModifiedOn = GETDATE()
-          FROM RestaurantOrderDetailCur d
-          JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId
-          WHERE h.Tableno = @TableNo 
-          AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
-          AND d.StatusCode IN (1, 2, 3, 5);
-
-          -- 3. Expire VOIDED items (StatusCode 0) from KDS instantly
+          -- 2. Expire VOIDED items (StatusCode 0) from KDS instantly
           UPDATE d
           SET d.ModifiedOn = DATEADD(MINUTE, -10, GETDATE())
           FROM RestaurantOrderDetailCur d
           JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId
-          WHERE h.Tableno = @TableNo 
+          WHERE (h.Tableno = @TableNo OR h.Tableno = @tid)
           AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
           AND d.StatusCode = 0;
         `);
