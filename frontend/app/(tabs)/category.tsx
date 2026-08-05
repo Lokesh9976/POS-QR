@@ -4636,6 +4636,7 @@ export default function Category() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 }
