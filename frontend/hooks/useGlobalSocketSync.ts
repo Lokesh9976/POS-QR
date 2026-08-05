@@ -26,7 +26,7 @@ export function useGlobalSocketSync() {
     const last = lastFetchRef.current[tableId] || 0;
     if (now - last > delay) {
       lastFetchRef.current[tableId] = now;
-      fetchCartFromDB(tableId);
+      fetchCartFromDB(tableId, true);
     }
   };
 

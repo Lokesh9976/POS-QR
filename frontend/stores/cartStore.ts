@@ -1659,8 +1659,8 @@ export const useCartStore = create<CartState>()(
               return { tableOrderIds: updatedIds };
             });
 
-            // Final fetch to ensure state matches DB
-            await get().fetchCartFromDB(tableId);
+            // Final fetch to ensure state matches DB (force=true to bypass Latency Shield)
+            await get().fetchCartFromDB(tableId, true);
             return { success: true };
           }
           return { success: false };
