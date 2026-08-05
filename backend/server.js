@@ -378,14 +378,14 @@ app.get("/image/:id", (req, res) =>
   res.redirect(`/api/menu/image/${req.params.id}`),
 );
 
-// 🧹 JANITOR HEARTBEAT: Professional Ghost Cleanup (Every 5 minutes)
-// This safety net closes any orphan orders belonging to available tables.
+// 🧹 JANITOR HEARTBEAT: Safe Ghost Cleanup (Every 15 minutes)
+// Strictly closes orphan orders only if the table has been vacant with 0 items for over 30 minutes
 setInterval(async () => {
   try {
     const pool = await poolPromise;
     if (!pool || !pool.connected) return;
     
-    // 1. Close orders for tables that are marked as Available (Status 0)
+    // Close only true stale orphan orders where table is 0 and no active items exist
     const result = await pool.request().query(`
       UPDATE RestaurantOrderCur 
       SET isOrderClosed = 1, ModifiedOn = GETDATE()
@@ -395,26 +395,22 @@ setInterval(async () => {
         FROM TableMaster 
         WHERE Status = 0
       )
-      AND CreatedOn < DATEADD(MINUTE, -5, GETDATE()); -- Optimized to allow index usage
+      AND OrderId NOT IN (
+        SELECT OrderId FROM RestaurantOrderDetailCur WHERE StatusCode IN (1, 2, 3, 5)
+      )
+      AND CreatedOn < DATEADD(MINUTE, -30, GETDATE());
     `);
     
     if (result.recordset || result.rowsAffected[0] > 0) {
       const affected = result.rowsAffected[0] || 0;
-      console.log(`🧹 [Janitor] Cleared ${affected} orphan orders.`);
-      io.emit("cart_updated", { tableId: "GLOBAL_CLEANUP" });
+      if (affected > 0) {
+        console.log(`🧹 [Janitor] Cleared ${affected} stale orphan orders.`);
+      }
     }
-
-    // 2. Ensure items in DetailCur are also marked served if their parent order is closed
-    await pool.request().query(`
-      UPDATE RestaurantOrderDetailCur
-      SET StatusCode = 4, ModifiedOn = GETDATE()
-      WHERE StatusCode IN (1, 2, 3, 5)
-      AND OrderId IN (SELECT OrderId FROM RestaurantOrderCur WHERE isOrderClosed = 1)
-    `);
   } catch (err) {
     console.error("🧹 [Janitor] Cleanup failed:", err.message);
   }
-}, 5 * 60 * 1000); // 5 Minutes
+}, 15 * 60 * 1000); // 15 Minutes
 
 // 📊 TEMPORARY DIAGNOSTICS LOGGING (Every 5 minutes)
 const DIAGNOSTICS_LOG_FILE = path.join(__dirname, "logs", "diagnostics.log");
