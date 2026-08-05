@@ -10,113 +10,347 @@ if (!JWT_SECRET) {
 const bcrypt = require("bcryptjs");
 
 async function sendWelcomeEmail({ email, name, phone, promoCode, promoAmount }) {
-  if (!email || !email.includes("@")) return;
+  const callMsg = `✉️ [Mail] sendWelcomeEmail called at ${new Date().toISOString()} → email="${email}", name="${name}"\n`;
+  require('fs').appendFileSync('mail_debug.log', callMsg);
+  console.log(callMsg);
+  if (!email || !email.includes("@")) {
+    const skipMsg = `⚠️ [Mail] Skipped welcome email — email is empty or invalid: "${email}"\n`;
+    require('fs').appendFileSync('mail_debug.log', skipMsg);
+    console.warn(skipMsg);
+    return;
+  }
   try {
     const { transporter, from } = createMailTransporter();
+    
+    // Plain text fallback version for email deliverability
+    const textContent = `
+Welcome to the Member Club, ${name}.
+
+Thank you for registering as a member with Smart POS. Your account has been configured.
+
+Your Member Profile:
+Name: ${name}
+Mobile: ${phone}
+Email: ${email}
+${promoCode ? `Welcome Wallet Credit: Code ${promoCode} (Value: $${promoAmount})` : ''}
+
+Start ordering here: http://myerpcloud.dyndns.org:8081/customer
+
+Unipro Singapore
+No. 2 Yishun Industrial Street 1, #03-24, North Point Bizhub, Singapore 768159
+Support: support@unipro.com.sg
+Unsubscribe: http://myerpcloud.dyndns.org:8081/customer/unsubscribe
+    `.trim();
+
     const htmlContent = `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Welcome to the VIP Club!</title>
+      <title>Welcome to the Member Club</title>
+      <!--[if mso]>
+      <noscript>
+        <xml>
+          <o:OfficeDocumentSettings>
+            <o:AllowPNG/>
+            <o:PixelsPerInch>96</o:PixelsPerInch>
+          </o:OfficeDocumentSettings>
+        </xml>
+      </noscript>
+      <![endif]-->
+      <style>
+        body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        img { -ms-interpolation-mode: bicubic; }
+        img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+        table { border-collapse: collapse !important; }
+        body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+        a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
+        @media screen and (max-width: 600px) {
+          .wrapper { width: 100% !important; max-width: 100% !important; }
+          .responsive-padding { padding: 24px !important; }
+          .hero-heading { font-size: 26px !important; }
+          .grid-cell { display: block !important; width: 100% !important; padding-right: 0 !important; padding-left: 0 !important; margin-bottom: 16px !important; }
+          .benefits-table { padding: 0 !important; }
+        }
+      </style>
     </head>
-    <body style="margin:0; padding:0; background-color:#F1F5F9; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#F1F5F9; padding: 40px 10px;">
+    <body style="margin: 0 !important; padding: 0 !important; background-color: #F8FAFC; font-family: Arial, Helvetica, sans-serif;">
+      <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation" style="background-color: #F8FAFC;">
         <tr>
-          <td align="center">
-            <table role="presentation" width="100%" style="max-width:600px; background-color:#FFFFFF; border-radius:24px; overflow:hidden; box-shadow: 0 20px 40px rgba(255, 94, 26, 0.12);">
+          <td align="center" style="padding: 24px 10px 48px 10px;">
+            <!--[if (gte mso 9)|(IE)]>
+            <table align="center" border="0" cellspacing="0" cellpadding="0" width="580">
+            <tr>
+            <td>
+            <![endif]-->
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" class="wrapper" style="max-width: 580px; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04); border: 1px solid #E2E8F0;">
               
-              <!-- 🚀 HERO BANNER -->
+              <!-- 👑 PREMIUM HERO BANNER -->
               <tr>
-                <td style="background: linear-gradient(135deg, #FF5E1A 0%, #E04D10 100%); padding: 45px 30px; text-align: center; color: #FFFFFF;">
-                  <div style="font-size: 54px; line-height:1; margin-bottom: 15px;">🍕🔥🎁</div>
-                  <h1 style="margin: 0; font-size: 32px; font-weight: 900; letter-spacing: -0.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.15);">WELCOME TO THE VIP CLUB!</h1>
-                  <p style="margin: 10px 0 0 0; font-size: 16px; font-weight: 600; opacity: 0.92; letter-spacing: 0.5px;">Your Table-Side Dining Experience Just Got Upgraded!</p>
-                </td>
-              </tr>
-
-              <!-- ✉️ BODY CONTENT -->
-              <tr>
-                <td style="padding: 35px 30px;">
-                  <h2 style="margin: 0 0 12px 0; color: #0F172A; font-size: 22px; font-weight: 800;">Hey ${name} 👋</h2>
-                  <p style="margin: 0 0 24px 0; color: #475569; font-size: 15px; line-height: 1.6; font-weight: 500;">
-                    Boom! You’re officially registered as an exclusive VIP Member with <strong>Smart POS & Table QR</strong>! Get ready for seamless table ordering, instant receipts, and secret member rewards!
-                  </p>
-
-                  <!-- 💳 MEMBER CARD -->
-                  <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); border-radius: 18px; padding: 24px; color: #FFFFFF; position: relative; margin-bottom: 28px; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 12px; margin-bottom: 16px;">
-                      <span style="font-size: 12px; font-weight: 800; color: #FF5E1A; letter-spacing: 1.5px; text-transform: uppercase;">OFFICIAL MEMBER PASS</span>
-                      <span style="font-size: 12px; font-weight: 700; color: #94A3B8;">SMART POS VIP</span>
-                    </div>
-
-                    <div style="margin-bottom: 12px;">
-                      <div style="font-size: 11px; color: #94A3B8; font-weight: 600; text-transform: uppercase;">Member Name</div>
-                      <div style="font-size: 18px; font-weight: 800; color: #FFFFFF; margin-top: 2px;">${name}</div>
-                    </div>
-
-                    <div style="display: flex; gap: 20px; margin-bottom: 12px;">
-                      <div style="flex: 1;">
-                        <div style="font-size: 11px; color: #94A3B8; font-weight: 600; text-transform: uppercase;">Mobile Number</div>
-                        <div style="font-size: 14px; font-weight: 700; color: #E2E8F0; margin-top: 2px;">${phone}</div>
-                      </div>
-                      <div style="flex: 1;">
-                        <div style="font-size: 11px; color: #94A3B8; font-weight: 600; text-transform: uppercase;">Email ID</div>
-                        <div style="font-size: 14px; font-weight: 700; color: #E2E8F0; margin-top: 2px;">${email}</div>
-                      </div>
-                    </div>
-
-                    ${promoCode ? `
-                    <div style="background: rgba(34, 197, 94, 0.15); border: 1px dashed #22C55E; border-radius: 12px; padding: 12px; margin-top: 14px; text-align: center;">
-                      <span style="font-size: 13px; color: #4ADE80; font-weight: 800;">🎁 WELCOME BONUS ADDED:</span>
-                      <div style="font-size: 16px; color: #FFFFFF; font-weight: 900; margin-top: 2px;">${promoCode} — $${promoAmount} Free Credit Added to Wallet!</div>
-                    </div>
-                    ` : ''}
-                  </div>
-
-                  <!-- ⭐ PERKS LIST -->
-                  <h3 style="margin: 0 0 16px 0; color: #0F172A; font-size: 17px; font-weight: 800;">🔥 YOUR VIP PERKS INCLUDE:</h3>
-                  
-                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 28px;">
+                <td align="center" style="background: linear-gradient(135deg, #FF6A00 0%, #E04D10 100%); padding: 48px 40px; text-align: center;">
+                  <table border="0" cellpadding="0" cellspacing="0" role="presentation">
                     <tr>
-                      <td width="36" valign="top" style="font-size: 20px;">⚡</td>
-                      <td style="padding-bottom: 14px; color: #334155; font-size: 14px; font-weight: 600; line-height: 1.4;">
-                        <strong>Lightning Fast Table QR Ordering</strong> — Skip the wait lines and order directly from your smartphone!
+                      <td align="center" style="background-color: rgba(255, 255, 255, 0.15); border-radius: 30px; padding: 6px 16px; display: inline-block; margin-bottom: 16px;">
+                        <span style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; font-weight: bold; color: #FFFFFF; letter-spacing: 1px; text-transform: uppercase;">Welcome to VIP Club</span>
                       </td>
                     </tr>
                     <tr>
-                      <td width="36" valign="top" style="font-size: 20px;">💳</td>
-                      <td style="padding-bottom: 14px; color: #334155; font-size: 14px; font-weight: 600; line-height: 1.4;">
-                        <strong>Instant E-Receipts</strong> — Track all your orders and bills seamlessly in real-time.
+                      <td>
+                        <h1 class="hero-heading" style="margin: 0 0 12px 0; font-family: Arial, Helvetica, sans-serif; font-size: 30px; font-weight: bold; color: #FFFFFF; letter-spacing: -0.5px; line-height: 1.2;">Your Table-side Dining Experience Just Got Better.</h1>
                       </td>
                     </tr>
                     <tr>
-                      <td width="36" valign="top" style="font-size: 20px;">🎉</td>
-                      <td style="color: #334155; font-size: 14px; font-weight: 600; line-height: 1.4;">
-                        <strong>Member Discounts & Promos</strong> — Receive secret promo drops, birthday rewards, and cashback!
+                      <td style="padding: 0 20px;">
+                        <p style="margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: rgba(255, 255, 255, 0.9); line-height: 1.5; font-weight: normal;">Enjoy effortless QR code ordering, real-time receipts, rewards, and exclusive dining privileges.</p>
                       </td>
                     </tr>
                   </table>
+                </td>
+              </tr>
 
-                  <!-- 📲 CALL TO ACTION BUTTON -->
-                  <div style="text-align: center; margin: 35px 0 15px 0;">
-                    <a href="http://localhost:8081/customer" style="background-color: #FF5E1A; color: #FFFFFF; text-decoration: none; padding: 16px 36px; border-radius: 30px; font-weight: 800; font-size: 16px; display: inline-block; box-shadow: 0 8px 20px rgba(255, 94, 26, 0.35); letter-spacing: 0.3px;">START ORDERING NOW ➔</a>
-                  </div>
+              <!-- ✉️ WELCOME AND ACCOUNT CONFIRMATION -->
+              <tr>
+                <td class="responsive-padding" style="padding: 40px 40px 24px 40px;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation">
+                    <tr>
+                      <td>
+                        <h2 style="margin: 0 0 12px 0; font-family: Arial, Helvetica, sans-serif; font-size: 18px; font-weight: bold; color: #1E293B;">Hi ${name}</h2>
+                        <p style="margin: 0 0 24px 0; font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #475569; line-height: 1.6;">
+                          Welcome to the Unipro VIP Club! You can now enjoy faster QR ordering, instant digital receipts, exclusive member-only offers, reward points, birthday surprises, cashback, and a seamless dining experience.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
 
+              <!-- 💳 GLASSMORPHISM MEMBER CARD -->
+              <tr>
+                <td class="responsive-padding" style="padding: 0 40px 32px 40px;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation" style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px;">
+                    <tr>
+                      <td style="padding-bottom: 16px; border-bottom: 1px solid #E2E8F0;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation">
+                          <tr>
+                            <td valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 11px; font-weight: bold; color: #FF6A00; text-transform: uppercase; letter-spacing: 1px;">MEMBER CARD</span>
+                            </td>
+                            <td align="right" valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 11px; font-weight: bold; color: #1E293B; background-color: #F59E0B; padding: 3px 8px; border-radius: 4px;">GOLD LEVEL</span>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding-top: 16px;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation">
+                          <tr>
+                            <td style="padding: 6px 0; width: 120px;" valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #64748B;">Member Name</span>
+                            </td>
+                            <td align="right" style="padding: 6px 0;" valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1E293B; font-weight: bold;">${name}</span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 6px 0; width: 120px;" valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #64748B;">Mobile Number</span>
+                            </td>
+                            <td align="right" style="padding: 6px 0;" valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1E293B; font-weight: bold;">${phone}</span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 6px 0; width: 120px;" valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #64748B;">Email</span>
+                            </td>
+                            <td align="right" style="padding: 6px 0;" valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1E293B; font-weight: bold;">${email}</span>
+                            </td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 6px 0; width: 120px;" valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #64748B;">Member Since</span>
+                            </td>
+                            <td align="right" style="padding: 6px 0;" valign="middle">
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1E293B; font-weight: bold;">${new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}</span>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    ${promoCode ? `
+                    <tr>
+                      <td style="padding-top: 16px;">
+                        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 12px; text-align: center;">
+                          <tr>
+                            <td>
+                              <span style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #065F46; font-weight: bold;">Welcome Wallet Credit</span>
+                              <div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #047857; font-weight: bold; margin-top: 2px;">Code: ${promoCode} (Amount: $${promoAmount})</div>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                    ` : ''}
+                  </table>
+                </td>
+              </tr>
+
+              <!-- 🛡️ VIP BENEFITS SECTION -->
+              <tr>
+                <td class="responsive-padding" style="padding: 0 40px 32px 40px;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation">
+                    <tr>
+                      <td style="padding-bottom: 18px;">
+                        <h3 style="margin: 0; font-family: Arial, Helvetica, sans-serif; font-size: 13px; font-weight: bold; color: #FF6A00; text-transform: uppercase; letter-spacing: 1px;">VIP Privileges</h3>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td>
+                        <table class="benefits-table" border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation">
+                          <!-- Grid Row 1 -->
+                          <tr>
+                            <td class="grid-cell" width="50%" valign="top" style="padding-right: 10px; padding-bottom: 20px;">
+                              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #F1F5F9; border-radius: 12px; padding: 16px;">
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 4px;">Fast QR Ordering</td>
+                                </tr>
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #64748B; line-height: 1.4;">Scan, browse, and place your order instantly.</td>
+                                </tr>
+                              </table>
+                            </td>
+                            <td class="grid-cell" width="50%" valign="top" style="padding-left: 10px; padding-bottom: 20px;">
+                              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #F1F5F9; border-radius: 12px; padding: 16px;">
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 4px;">Exclusive Offers</td>
+                                </tr>
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #64748B; line-height: 1.4;">Access specialized member discounts.</td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          <!-- Grid Row 2 -->
+                          <tr>
+                            <td class="grid-cell" width="50%" valign="top" style="padding-right: 10px; padding-bottom: 20px;">
+                              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #F1F5F9; border-radius: 12px; padding: 16px;">
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 4px;">Birthday Rewards</td>
+                                </tr>
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #64748B; line-height: 1.4;">Receive extra surprises on your birthday.</td>
+                                </tr>
+                              </table>
+                            </td>
+                            <td class="grid-cell" width="50%" valign="top" style="padding-left: 10px; padding-bottom: 20px;">
+                              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #F1F5F9; border-radius: 12px; padding: 16px;">
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 4px;">Earn Reward Points</td>
+                                </tr>
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #64748B; line-height: 1.4;">Accumulate points for every meal ordered.</td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                          <!-- Grid Row 3 -->
+                          <tr>
+                            <td class="grid-cell" width="50%" valign="top" style="padding-right: 10px; padding-bottom: 20px;">
+                              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #F1F5F9; border-radius: 12px; padding: 16px;">
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 4px;">Digital Receipts</td>
+                                </tr>
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #64748B; line-height: 1.4;">Your billing details are saved digitally.</td>
+                                </tr>
+                              </table>
+                            </td>
+                            <td class="grid-cell" width="50%" valign="top" style="padding-left: 10px; padding-bottom: 20px;">
+                              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border: 1px solid #F1F5F9; border-radius: 12px; padding: 16px;">
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 4px;">Order History</td>
+                                </tr>
+                                <tr>
+                                  <td style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #64748B; line-height: 1.4;">View all your past purchases easily.</td>
+                                </tr>
+                              </table>
+                            </td>
+                          </tr>
+                        </table>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- 📲 CALL TO ACTION -->
+              <tr>
+                <td class="responsive-padding" style="padding: 0 40px 48px 40px; text-align: center;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation">
+                    <tr>
+                      <td align="center">
+                        <!--[if mso]>
+                        <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="http://myerpcloud.dyndns.org:8081/customer" style="height:50px;v-text-anchor:middle;width:240px;" arcsize="10%" stroke="f" fillcolor="#FF6A00">
+                          <w:anchorlock/>
+                          <center>
+                            <span style="color:#ffffff;font-family:Arial, sans-serif;font-size:15px;font-weight:bold;">Start Ordering →</span>
+                          </center>
+                        </v:roundrect>
+                        <![endif]-->
+                        <!--[if !mso]><!-->
+                        <a href="http://myerpcloud.dyndns.org:8081/customer" style="background-color: #FF6A00; color: #FFFFFF; font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: bold; text-decoration: none; padding: 15px 36px; border-radius: 8px; display: inline-block; box-shadow: 0 6px 12px rgba(255, 106, 0, 0.15);">Start Ordering</a>
+                        <!--<![endif]-->
+                      </td>
+                    </tr>
+                  </table>
                 </td>
               </tr>
 
               <!-- 🛡️ FOOTER -->
               <tr>
-                <td style="background-color: #F8FAFC; padding: 24px 30px; text-align: center; border-top: 1px solid #E2E8F0; color: #94A3B8; font-size: 12px;">
-                  <p style="margin: 0 0 6px 0; font-weight: 700; color: #64748B;">Smart POS & Digital QR Dining System</p>
-                  <p style="margin: 0; font-weight: 500;">You received this email because you registered as a member at our table QR portal.</p>
-                  <p style="margin: 10px 0 0 0; font-size: 11px;">© 2026 UNIPRO. All rights reserved.</p>
+                <td style="background-color: #F8FAFC; padding: 32px 40px; text-align: center; border-top: 1px solid #E2E8F0;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%" role="presentation">
+                    <tr>
+                      <td style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; font-weight: bold; color: #1E293B; padding-bottom: 6px;">
+                        Smart POS & Table QR
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #64748B; padding-bottom: 8px; line-height: 1.4;">
+                        No. 2 Yishun Industrial Street 1, #03-24, North Point Bizhub, Singapore 768159
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="font-family: Arial, Helvetica, sans-serif; font-size: 12px; color: #64748B; padding-bottom: 16px;">
+                        Support: <a href="mailto:support@unipro.com.sg" style="color: #FF6A00; text-decoration: none;">support@unipro.com.sg</a> &bull; Website: <a href="https://unipro.com.sg" target="_blank" style="color: #FF6A00; text-decoration: none;">unipro.com.sg</a>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #94A3B8; padding-bottom: 8px;">
+                        &copy; 2026 UNIPRO. All rights reserved.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="font-family: Arial, Helvetica, sans-serif; font-size: 11px;">
+                        <a href="http://myerpcloud.dyndns.org:8081/customer/privacy" style="color: #94A3B8; text-decoration: underline;">Privacy Policy</a>
+                        &nbsp;&bull;&nbsp;
+                        <a href="http://myerpcloud.dyndns.org:8081/customer/unsubscribe" style="color: #94A3B8; text-decoration: underline;">Unsubscribe</a>
+                      </td>
+                    </tr>
+                  </table>
                 </td>
               </tr>
-
             </table>
+            <!--[if (gte mso 9)|(IE)]>
+            </td>
+            </tr>
+            </table>
+            <![endif]-->
           </td>
         </tr>
       </table>
@@ -125,14 +359,19 @@ async function sendWelcomeEmail({ email, name, phone, promoCode, promoAmount }) 
     `;
 
     await transporter.sendMail({
-      from: `"Smart POS VIP" <${from}>`,
+      from: `"Smart POS" <${from}>`,
       to: email,
-      subject: `🔥 WELCOME TO THE VIP CLUB, ${name.toUpperCase()}! Your Member Pass is Ready 🍕`,
+      subject: `Welcome to the Member Club, ${name}`,
+      text: textContent,
       html: htmlContent,
     });
-    console.log(`✉️ [Mail] Mass VIP Welcome email sent to new member: ${email}`);
+    const successMsg = `✉️ [Mail] Welcome email sent successfully to ${email} at ${new Date().toISOString()}\n`;
+    console.log(successMsg);
+    require('fs').appendFileSync('mail_debug.log', successMsg);
   } catch (err) {
-    console.warn(`⚠️ [Mail] Could not send welcome email to ${email}:`, err.message);
+    const errMsg = `⚠️ [Mail] Failed for ${email} at ${new Date().toISOString()}: [${err.code || 'NO_CODE'}] ${err.message}. Response: ${err.response ? JSON.stringify(err.response) : 'none'}\n`;
+    console.warn(errMsg);
+    require('fs').appendFileSync('mail_debug.log', errMsg);
   }
 }
 
