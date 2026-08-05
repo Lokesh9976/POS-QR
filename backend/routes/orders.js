@@ -243,7 +243,7 @@ async function getOrGenerateOrderId(req, tableId) {
         await pool.request()
           .input('tid2', sql.VarChar(50), cleanId)
           .input('oid2', sql.NVarChar(50), activeOrderNo)
-          .query(`UPDATE TableMaster SET CurrentOrderId = @oid2, StartTime = ISNULL(StartTime, GETDATE()) WHERE TableId = @tid2`);
+          .query(`UPDATE TableMaster SET CurrentOrderId = @oid2, StartTime = ISNULL(StartTime, GETDATE()) WHERE TableNumber = @tid2 OR (TRY_CAST(@tid2 AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid2 AS UNIQUEIDENTIFIER))`);
         return activeOrderNo;
       }
     } catch (activeCheckErr) {
@@ -283,7 +283,7 @@ async function getOrGenerateOrderId(req, tableId) {
       .input("tid", sql.VarChar(50), cleanId)
       .input("oid", sql.NVarChar(50), displayOrderId)
       .query(
-        "UPDATE TableMaster SET CurrentOrderId = @oid, StartTime = ISNULL(StartTime, GETDATE()) WHERE TableId = @tid",
+        "UPDATE TableMaster SET CurrentOrderId = @oid, StartTime = ISNULL(StartTime, GETDATE()) WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))",
       );
 
     return displayOrderId;
