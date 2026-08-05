@@ -1,40 +1,26 @@
 const { poolPromise, sql } = require("../config/db");
 
-async function diagnoseTables() {
+async function verifyTableIsolation() {
   try {
     const pool = await poolPromise;
-    console.log("=== TABLE MASTER DIAGNOSTICS ===");
-    const tables = await pool.request().query(`
-      SELECT TableId, TableNumber, Status, CurrentOrderId, StartTime, TotalAmount, entry_status
-      FROM TableMaster
-      ORDER BY TRY_CAST(TableNumber AS INT), TableNumber
-    `);
-    console.table(tables.recordset);
+    console.log("=== CHECKING TABLEMASTER CURRENT ORDER IDS ===");
+    const res = await pool.request().query("SELECT TableNumber, TableId, Status, CurrentOrderId FROM TableMaster WHERE TableNumber IN ('15', '16', '20') ORDER BY CAST(TableNumber AS INT)");
+    console.table(res.recordset);
 
-    console.log("\n=== ACTIVE ORDERS IN RESTAURANTORDERCUR ===");
-    const activeOrders = await pool.request().query(`
-      SELECT OrderId, OrderNumber, Tableno, TotalAmount, isOrderClosed, CreatedOn, ModifiedOn
-      FROM RestaurantOrderCur
-      WHERE (isOrderClosed = 0 OR isOrderClosed IS NULL)
+    console.log("\n=== CHECKING ACTIVE ORDERS FOR TABLES 15, 16, 20 IN DB ===");
+    const ordersRes = await pool.request().query(`
+      SELECT OrderId, OrderNumber, Tableno, isOrderClosed, CreatedOn 
+      FROM RestaurantOrderCur 
+      WHERE Tableno IN ('15', '16', '20') AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
       ORDER BY CreatedOn DESC
     `);
-    console.table(activeOrders.recordset);
-
-    console.log("\n=== ACTIVE ORDER DETAILS IN RESTAURANTORDERDETAILCUR ===");
-    const activeDetails = await pool.request().query(`
-      SELECT d.OrderDetailId, d.OrderId, h.OrderNumber, h.Tableno, d.DishId, d.DishName, d.Quantity, d.PricePerUnit, d.StatusCode, d.CreatedOn
-      FROM RestaurantOrderDetailCur d
-      JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId
-      WHERE (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
-      ORDER BY h.Tableno, d.CreatedOn ASC
-    `);
-    console.table(activeDetails.recordset);
+    console.table(ordersRes.recordset);
 
     process.exit(0);
   } catch (err) {
-    console.error("Diagnostic error:", err);
+    console.error("Error:", err);
     process.exit(1);
   }
 }
 
-diagnoseTables();
+verifyTableIsolation();
