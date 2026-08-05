@@ -121,7 +121,10 @@ function _formatItem(item) {
 
   if (item.modifiers && item.modifiers.length > 0) {
     item.modifiers.forEach(m => {
-      text += `[L]    <font size='big'><B>+ ${m.ModifierName || m.name}</B></font>\n`;
+      const modName = m.ModifierName || m.modifierName || m.name || m.ModifierNameEn || "";
+      if (modName) {
+        text += `[L]      <font size='big'><B>+ ${modName}</B></font>\n`;
+      }
     });
   }
 

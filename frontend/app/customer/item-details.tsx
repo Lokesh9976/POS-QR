@@ -269,6 +269,19 @@ export default function CustomerItemDetailsScreen() {
           return;
         }
       }
+
+      // Enforce at least one selection across all groups if combo base price is 0
+      if (Number(dish.Price || 0) === 0) {
+        let totalSelected = 0;
+        comboConfig.groups.forEach((group: any) => {
+          const selectedIds = selections[group.comboGroupId] || [];
+          totalSelected += selectedIds.length;
+        });
+        if (totalSelected === 0) {
+          setAlertMessage("This combo has a free base price. You must select at least one option to add it to your cart.");
+          return;
+        }
+      }
     }
 
     const cartItemData = {

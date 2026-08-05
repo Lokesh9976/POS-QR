@@ -163,10 +163,8 @@ async function getOrGenerateOrderId(req, tableId) {
     }
   }
 
-  const cleanId = String(tableId)
-    .replace(/^\{|\}$/g, "")
-    .trim();
-  if (!tableId || tableId === "undefined" || tableId === "null") return "NEW";
+  const cleanId = await getCleanTableId(pool, tableId);
+  if (!cleanId || cleanId === "undefined" || cleanId === "null") return "NEW";
 
   try {
     // 1. GHOST CLEANUP: Force close any stale open orders for this table first
@@ -193,7 +191,7 @@ async function getOrGenerateOrderId(req, tableId) {
       const closedCheck = await pool.request()
         .input("oid", sql.NVarChar(50), existingId)
         .query("SELECT TOP 1 isOrderClosed FROM RestaurantOrderCur WHERE OrderNumber = @oid OR OrderId = @oid");
-      
+
       const isClosed = closedCheck.recordset[0]?.isOrderClosed === true;
       if (!isClosed) {
         console.log(`✅ [Cart] Reusing existing active OrderID: ${existingId}`);
@@ -207,20 +205,38 @@ async function getOrGenerateOrderId(req, tableId) {
     // This prevents EM031 vs 0024 split-brain when a QR order exists but TableMaster.CurrentOrderId
     // was reset or shows a stale/different value.
     try {
-      const activeOrderCheck = await pool.request()
-        .input('tidForCheck', sql.UniqueIdentifier, cleanId)
-        .query(`
-          SELECT TOP 1 h.OrderNumber
-          FROM RestaurantOrderCur h
-          JOIN TableMaster tm ON h.Tableno = tm.TableNumber
-          WHERE tm.TableId = @tidForCheck
-            AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
-            AND h.OrderNumber IS NOT NULL
-            AND h.OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '')
-            AND h.OrderNumber NOT LIKE 'TEMP-%'
-          ORDER BY h.CreatedOn DESC
-        `);
-      const activeOrderNo = activeOrderCheck.recordset[0]?.OrderNumber;
+      const guidForCheck = toGuidOrNull(cleanId);
+      let activeOrderRes;
+      if (guidForCheck) {
+        activeOrderRes = await pool.request()
+          .input('tidForCheck', sql.UniqueIdentifier, guidForCheck)
+          .query(`
+            SELECT TOP 1 h.OrderNumber
+            FROM RestaurantOrderCur h
+            JOIN TableMaster tm ON h.Tableno = tm.TableNumber
+            WHERE tm.TableId = @tidForCheck
+              AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
+              AND h.OrderNumber IS NOT NULL
+              AND h.OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '')
+              AND h.OrderNumber NOT LIKE 'TEMP-%'
+            ORDER BY h.CreatedOn DESC
+          `);
+      } else {
+        activeOrderRes = await pool.request()
+          .input('tableNoCheck', sql.VarChar(50), String(cleanId))
+          .query(`
+            SELECT TOP 1 h.OrderNumber
+            FROM RestaurantOrderCur h
+            WHERE (h.Tableno = @tableNoCheck OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableId = @tableNoCheck))
+              AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
+              AND h.OrderNumber IS NOT NULL
+              AND h.OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '')
+              AND h.OrderNumber NOT LIKE 'TEMP-%'
+            ORDER BY h.CreatedOn DESC
+          `);
+      }
+
+      const activeOrderNo = activeOrderRes.recordset[0]?.OrderNumber;
       if (activeOrderNo && activeOrderNo.length > 5) {
         console.log(`✅ [Cart] Found active DB order for table, reusing OrderNumber: ${activeOrderNo}`);
         // Also sync TableMaster to reflect this order so future calls are consistent
@@ -310,8 +326,8 @@ async function syncToProfessionalTables(
   const cleanTableId = isTakeaway
     ? null
     : String(tableId)
-        .replace(/^\{|\}$/g, "")
-        .trim();
+      .replace(/^\{|\}$/g, "")
+      .trim();
   const cleanOrderNo = String(displayOrderId || "PENDING")
     .replace(/^\{|\}$/g, "")
     .trim();
@@ -452,31 +468,11 @@ async function syncToProfessionalTables(
           .input("destOrderNo", sql.NVarChar(50), cleanOrderNo)
           .input("srcOrderId", sql.UniqueIdentifier, ghost.OrderId)
           .query(`
-            -- Merge quantities for items that exist in both destination and source orders (match by DishId + StatusCode)
-            UPDATE x
-            SET x.Quantity = x.Quantity + d.Quantity,
-                x.ModifiedOn = GETDATE()
-            FROM RestaurantOrderDetailCur x
-            JOIN RestaurantOrderDetailCur d ON x.DishId = d.DishId AND x.StatusCode = d.StatusCode
-            WHERE x.OrderId = @destOrderId
-              AND d.OrderId = @srcOrderId;
-
-            -- Move items that don't already exist in the destination order (match by DishId + StatusCode)
-            UPDATE d
-            SET d.OrderId = @destOrderId,
-                d.OrderNumber = @destOrderNo,
-                d.ModifiedOn = GETDATE()
-            FROM RestaurantOrderDetailCur d
-            WHERE d.OrderId = @srcOrderId
-              AND NOT EXISTS (
-                SELECT 1 FROM RestaurantOrderDetailCur x
-                WHERE x.OrderId = @destOrderId
-                  AND x.DishId = d.DishId
-                  AND x.StatusCode = d.StatusCode
-              );
-
-            -- For items that have been merged/moved, remove them from ghost
-            DELETE FROM RestaurantOrderDetailCur
+            -- Move all line items from ghost order to definitive order cleanly
+            UPDATE RestaurantOrderDetailCur
+            SET OrderId = @destOrderId,
+                OrderNumber = @destOrderNo,
+                ModifiedOn = GETDATE()
             WHERE OrderId = @srcOrderId;
           `);
       }
@@ -542,7 +538,7 @@ async function syncToProfessionalTables(
       let comboDetailsJSON = null;
 
       if (isCombo) {
-        resolvedUnitPrice = basePrice;
+        resolvedUnitPrice = unitPrice;
         let selections = item.comboSelections || item.ComboSelections || [];
         if (typeof selections === 'string' && selections) {
           try { selections = JSON.parse(selections); } catch { selections = []; }
@@ -561,7 +557,7 @@ async function syncToProfessionalTables(
 
       const noteInfo = { value: item.note || item.Note || item.notes || item.Notes || item.Remarks || item.remarks || "" };
       const takeawayInfo = { value: item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway || false };
-      
+
       const modifiers = Array.isArray(item.modifiers || item.Modifiers) ? (item.modifiers || item.Modifiers) : [];
       let modsJSON = null;
       if (modifiers.length > 0) {
@@ -756,28 +752,51 @@ async function syncToProfessionalTables(
     `[DB] Syncing Order ${cleanOrderNo} (${orderGuid}): Processing ${items.length} items, keeping ${incomingIds.length} IDs.`,
   );
 
-  const cleanupRequest = transaction.request();
-  cleanupRequest.input("orderId", sql.UniqueIdentifier, orderGuid);
-
-  let cleanupSql = `
-    -- Smart Removal: Delete unsent items that are no longer in the cart
-    DELETE FROM RestaurantmodifierdetailCur WHERE OrderDetailId IN (SELECT OrderDetailId FROM RestaurantOrderDetailCur WHERE OrderId = @orderId AND StatusCode = 1 ${notInClause});
-    DELETE FROM RestaurantOrderDetailCur WHERE OrderId = @orderId AND StatusCode = 1 ${notInClause};
-    
-    -- Final Header Total Update
-    UPDATE RestaurantOrderCur SET TotalAmount = (SELECT ISNULL(SUM(ActualAmount), 0) FROM RestaurantOrderDetailCur WHERE OrderId = @orderId AND StatusCode <> 0) WHERE OrderId = @orderId;
-  `;
-
-  if (items.length === 0) {
-    console.log(`[DB] CLEARING ALL UNSENT for Order ${cleanOrderNo}`);
+  // 🛡️ SAFE REMOVAL GUARD: When called with 0 items and no incoming IDs to keep,
+  // the DELETE below would erase ALL StatusCode=1 (NEW) items. This is destructive when
+  // a save-cart with empty items races against an in-flight /send that hasn't committed yet.
+  // Check first: if the order has any SENT/READY/SERVED items, skip the destructive DELETE.
+  let skipSmartRemoval = false;
+  if (items.length === 0 && orderGuid) {
+    const activeSentCheck = await transaction.request()
+      .input("orderGuidCheck", sql.UniqueIdentifier, orderGuid)
+      .query(`SELECT COUNT(*) AS cnt FROM RestaurantOrderDetailCur WHERE OrderId = @orderGuidCheck AND StatusCode >= 2`);
+    const sentItemCount = activeSentCheck.recordset[0]?.cnt || 0;
+    if (sentItemCount > 0) {
+      console.log(`[DB] SMART REMOVAL SKIPPED for Order ${cleanOrderNo} — ${sentItemCount} SENT/READY items exist. Preserving order state.`);
+      skipSmartRemoval = true;
+    } else {
+      console.log(`[DB] CLEARING ALL UNSENT for Order ${cleanOrderNo}`);
+    }
   }
-  await cleanupRequest.query(cleanupSql);
+
+  if (!skipSmartRemoval) {
+    const cleanupRequest = transaction.request();
+    cleanupRequest.input("orderId", sql.UniqueIdentifier, orderGuid);
+
+    const cleanupSql = `
+      -- Smart Removal: Delete unsent items that are no longer in the cart
+      DELETE FROM RestaurantmodifierdetailCur WHERE OrderDetailId IN (SELECT OrderDetailId FROM RestaurantOrderDetailCur WHERE OrderId = @orderId AND StatusCode = 1 ${notInClause});
+      DELETE FROM RestaurantOrderDetailCur WHERE OrderId = @orderId AND StatusCode = 1 ${notInClause};
+      
+      -- Final Header Total Update
+      UPDATE RestaurantOrderCur SET TotalAmount = (SELECT ISNULL(SUM(ActualAmount), 0) FROM RestaurantOrderDetailCur WHERE OrderId = @orderId AND StatusCode <> 0) WHERE OrderId = @orderId;
+    `;
+    await cleanupRequest.query(cleanupSql);
+  } else {
+    // Still update the total without touching items
+    const totalRequest = transaction.request();
+    totalRequest.input("orderId", sql.UniqueIdentifier, orderGuid);
+    await totalRequest.query(`
+      UPDATE RestaurantOrderCur SET TotalAmount = (SELECT ISNULL(SUM(ActualAmount), 0) FROM RestaurantOrderDetailCur WHERE OrderId = @orderId AND StatusCode <> 0) WHERE OrderId = @orderId;
+    `);
+  }
 }
 
 async function syncTableStatus(req, tableId) {
   if (!tableId || tableId === "undefined" || tableId === "null") return null;
   const cleanId = String(tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
-  
+
   const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
   if (!isValidUUID) {
     console.log(`[syncTableStatus] Skipping sync for non-UUID tableId: ${cleanId}`);
@@ -968,7 +987,7 @@ router.post("/save-cart", async (req, res) => {
       customerName,
     } = req.body;
     const pool = await poolPromise;
-    
+
     // Day Start / Day End validation check
     const activeDayRes = await pool.request().query("SELECT TOP 1 StartDate FROM DateEntry ORDER BY CreatedDate DESC");
     if (activeDayRes.recordset.length === 0) {
@@ -988,6 +1007,7 @@ router.post("/save-cart", async (req, res) => {
     // 🚀 UNIFIED ID: Use existing orderId if available, even for empty carts
     let currentOrderId = orderId;
     const hasItems = items && items.length > 0;
+    let nuclearClearWasBlocked = false; // 🛡️ Set to true when nuclear clear is skipped due to SENT items in DB
 
     if (
       hasItems &&
@@ -1018,6 +1038,7 @@ router.post("/save-cart", async (req, res) => {
         console.log(`[TRACE] [${now}] [SAVE-CART] NUCLEAR CLEAR BLOCKED — DB has ${sentCount} SENT/READY items. Order is still active.`);
         // Don't nuke — use existing order ID so subsequent sync picks up the right order
         currentOrderId = orderId || null;
+        nuclearClearWasBlocked = true; // 🛡️ Signal to skip syncToProfessionalTables below
       } else {
         console.log(`[TRACE] [${now}] [SAVE-CART] NUCLEAR CLEAR for Table ${cleanId} (confirmed: no sent items in DB)`);
         await pool.request().input("tid", sql.VarChar(50), cleanId).query(`
@@ -1048,25 +1069,29 @@ router.post("/save-cart", async (req, res) => {
       }
     }
 
-
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
     try {
-      // 🚀 ALWAYS SYNC: Even if items is empty, we need to run syncToProfessionalTables
-      // to ensure any existing items in the DB are voided/cleaned up.
-      await syncToProfessionalTables(
-        transaction,
-        cleanId,
-        currentOrderId,
-        items || [],
-        userId,
-        formattedStartDate,
-        entryStatus === "q",
-        0,
-        null,
-        mobileNo,
-        customerName,
-      );
+      // 🛡️ SAFETY: If items is empty AND we blocked the nuclear clear (SENT items exist),
+      // do NOT call syncToProfessionalTables — it would delete all StatusCode=1 NEW items
+      // via Smart Removal, leaving 0 items total and causing syncTableStatus to close the order.
+      if (!nuclearClearWasBlocked) {
+        await syncToProfessionalTables(
+          transaction,
+          cleanId,
+          currentOrderId,
+          items || [],
+          userId,
+          formattedStartDate,
+          entryStatus === "q",
+          0,
+          null,
+          mobileNo,
+          customerName,
+        );
+      } else {
+        console.log(`[TRACE] [${now}] [SAVE-CART] Skipping syncToProfessionalTables — nuclear clear was blocked, order ${currentOrderId} has active SENT items, preserving DB state.`);
+      }
 
       // 🚀 CRITICAL: Update TableMaster INSIDE the same transaction
       await transaction
@@ -1110,7 +1135,7 @@ router.post("/save-cart", async (req, res) => {
       }
 
       if (!skipTableStatusSync) {
-        syncTableStatus(req, cleanId).catch(() => {});
+        syncTableStatus(req, cleanId).catch(() => { });
       }
     } catch (e) {
       if (transaction._isStarted) await transaction.rollback();
@@ -1146,16 +1171,25 @@ router.post("/send", async (req, res) => {
     await transaction.begin();
     try {
       // 1. 🚀 GENERATE PROFESSIONAL ID NOW (At the moment of sending)
-      // Also check if this table already had an active order (= additional order)
-      const preSendCheck = await pool.request()
-        .input('tid', sql.VarChar(50), cleanId)
-        .query('SELECT CurrentOrderId FROM TableMaster WHERE TableId = @tid');
-      const preSendOrderId = preSendCheck.recordset[0]?.CurrentOrderId;
-      const hadExistingOrder = !!(preSendOrderId && preSendOrderId !== 'NEW' && preSendOrderId !== '#NEW' && !preSendOrderId.startsWith('TEMP-') && preSendOrderId.length > 5);
+      // Check if this table already has active SENT items in DB (= additional order)
+      const sentCountCheck = await pool.request()
+        .input('tidForCheck', sql.VarChar(50), cleanId)
+        .query(`
+          DECLARE @TableNoCheck VARCHAR(20);
+          SELECT TOP 1 @TableNoCheck = TableNumber FROM TableMaster WHERE TableId = @tidForCheck;
+
+          SELECT COUNT(*) AS SentCount
+          FROM RestaurantOrderDetailCur d
+          JOIN RestaurantOrderCur h ON h.OrderId = d.OrderId
+          WHERE (h.Tableno = @TableNoCheck OR h.Tableno = @tidForCheck)
+            AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
+            AND d.StatusCode >= 2
+        `);
+
+      const existingSentCount = sentCountCheck.recordset[0]?.SentCount || 0;
+      const isAdditionalOrder = existingSentCount > 0;
 
       const finalOrderId = await getOrGenerateOrderId(req, cleanId);
-      // If the table already had this exact order ID before /send, it's an additional order
-      const isAdditionalOrder = hadExistingOrder && preSendOrderId === finalOrderId;
 
       // 2. FORCE SENT STATUS — use items from client, or fall back to DB items
       let clientItems = items || [];
@@ -1219,7 +1253,7 @@ router.post("/send", async (req, res) => {
               ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
               WHERE dish.DishId IN (${dishIds.map(id => `'${id}'`).join(",")})
             `);
-          
+
           const kitchenMap = {};
           kitchenRes.recordset.forEach(row => {
             kitchenMap[row.id.toLowerCase()] = row;
@@ -1238,12 +1272,65 @@ router.post("/send", async (req, res) => {
         console.warn("⚠️ Failed to resolve kitchen info for sentItems:", err.message);
       }
 
-      // 3. FORCE SYNC with the new Professional ID
+      // 2.8 🛡️ ADDITIONAL ORDER PROTECTION: If existing active items exist in DB for this order,
+      // fetch them and merge with sentItems so syncToProfessionalTables retains ALL order items!
+      let itemsToSync = [...sentItems];
+      try {
+        const existingDbOrderItems = await transaction
+          .request()
+          .input("orderNoCheck", sql.NVarChar(50), finalOrderId)
+          .input("tableNoCheck", sql.VarChar(50), String(cleanId))
+          .query(`
+            SELECT 
+              d.OrderDetailId as lineItemId, d.DishId as id, ISNULL(d.SongName,'') as songName, d.Quantity as qty, 
+              d.PricePerUnit as price, d.PricePerUnit as basePrice, ISNULL(NULLIF(d.DishName,''), dish.Name) as name,
+              d.ModifiersJSON, d.ComboDetailsJSON, d.Remarks as note, d.isTakeAway as isTakeaway,
+              ISNULL(d.DiscountAmount, 0) as discount, ISNULL(d.DiscountType, NULL) as discountType,
+              CASE d.StatusCode 
+                WHEN 1 THEN 'NEW' WHEN 2 THEN 'SENT' WHEN 3 THEN 'READY' 
+                WHEN 4 THEN 'SERVED' WHEN 5 THEN 'HOLD' WHEN 0 THEN 'VOIDED' 
+                ELSE 'SENT' 
+              END as status
+            FROM RestaurantOrderDetailCur d 
+            JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId 
+            LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
+            WHERE (h.OrderNumber = @orderNoCheck OR h.Tableno = @tableNoCheck)
+              AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
+              AND d.StatusCode <> 0
+          `);
+
+        const existingRows = existingDbOrderItems.recordset || [];
+        if (existingRows.length > 0) {
+          const sentLineItemIds = new Set(sentItems.map((i) => i.lineItemId).filter(Boolean));
+          existingRows.forEach((row) => {
+            if (!sentLineItemIds.has(row.lineItemId)) {
+              let mods = [];
+              if (row.ModifiersJSON) {
+                try { mods = typeof row.ModifiersJSON === 'string' ? JSON.parse(row.ModifiersJSON) : row.ModifiersJSON; } catch { }
+              }
+              let combos = [];
+              if (row.ComboDetailsJSON) {
+                try { combos = typeof row.ComboDetailsJSON === 'string' ? JSON.parse(row.ComboDetailsJSON) : row.ComboDetailsJSON; } catch { }
+              }
+              itemsToSync.push({
+                ...row,
+                modifiers: mods,
+                comboSelections: combos,
+                isCombo: !!combos && (Array.isArray(combos) ? combos.length > 0 : !!combos.groups)
+              });
+            }
+          });
+        }
+      } catch (mergeErr) {
+        console.warn("⚠️ Failed to merge existing DB order items in /send:", mergeErr.message);
+      }
+
+      // 3. FORCE SYNC with all merged order items
       await syncToProfessionalTables(
         transaction,
         cleanId,
         finalOrderId,
-        sentItems,
+        itemsToSync,
         userId,
         null,
         req.body.entryStatus === "q",
@@ -1354,7 +1441,7 @@ router.post("/send", async (req, res) => {
       }
 
       // 5. Refresh totals and notify instantly
-      syncTableStatus(req, cleanId).catch(() => {});
+      syncTableStatus(req, cleanId).catch(() => { });
     } catch (e) {
       await transaction.rollback();
       console.error("❌ SendOrder SQL Error:", e.message);
@@ -1377,7 +1464,7 @@ router.get("/cart/:tableId", async (req, res) => {
     }
     const pool = await poolPromise;
     const cleanId = await getCleanTableId(pool, tableId);
-    if (!cleanId || cleanId.length < 5) {
+    if (!cleanId) {
       return res.json({ items: [], currentOrderId: null });
     }
 
@@ -1439,7 +1526,7 @@ router.get("/cart/:tableId", async (req, res) => {
           remarks: discRow.DiscountRemarks || ""
         };
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // Fetch items: prioritize by CurrentOrderId, fall back to open order by TableNumber
     // 💡 LIVE SYNC: Allow TEMP- IDs so other devices can see the draft cart items!
@@ -1486,15 +1573,13 @@ router.get("/cart/:tableId", async (req, res) => {
           FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
         ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
         WHERE 
-          h.isOrderClosed = 0
-          AND d.StatusCode <> 0 -- 🚀 SHIELD: Never fetch voided items back into the active cart
-          AND ISNULL(d.isSettlement,0) = 0
+          (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
+          AND d.StatusCode <> 0
+          AND ISNULL(d.isSettlement, 0) = 0
           AND (
-            h.OrderNumber = @orderNo
-            OR (
-              @orderNo = '__NONE__' AND 
-              h.OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur WHERE Tableno = @tableNo AND isOrderClosed = 0 ORDER BY CreatedOn DESC)
-            )
+            h.Tableno = @tableNo
+            OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableId = @tid)
+            OR h.OrderNumber = @orderNo
           )
         ORDER BY d.CreatedOn ASC
       `);
@@ -1503,21 +1588,21 @@ router.get("/cart/:tableId", async (req, res) => {
       ...i,
       modifiers: i.ModifiersJSON
         ? (() => {
-            try {
-              return JSON.parse(i.ModifiersJSON);
-            } catch {
-              return [];
-            }
-          })()
+          try {
+            return JSON.parse(i.ModifiersJSON);
+          } catch {
+            return [];
+          }
+        })()
         : [],
       comboSelections: i.ComboDetailsJSON
         ? (() => {
-            try {
-              return JSON.parse(i.ComboDetailsJSON);
-            } catch {
-              return [];
-            }
-          })()
+          try {
+            return JSON.parse(i.ComboDetailsJSON);
+          } catch {
+            return [];
+          }
+        })()
         : [],
     }));
 
@@ -1823,7 +1908,7 @@ router.post("/checkout", async (req, res) => {
 
       await transaction.commit();
     } catch (txErr) {
-      try { await transaction.rollback(); } catch (_) {}
+      try { await transaction.rollback(); } catch (_) { }
       throw txErr;
     }
 
@@ -1912,7 +1997,7 @@ router.post("/remove-item", async (req, res) => {
       await transaction.commit();
 
       // 🚀 Refresh total immediately
-      syncTableStatus(req, tableId).catch(() => {});
+      syncTableStatus(req, tableId).catch(() => { });
 
       req.app.get("io")?.emit("cart_updated", {
         tableId: String(tableId || "").toLowerCase(),
@@ -2023,7 +2108,7 @@ router.post("/update-item-status", async (req, res) => {
               `);
 
             // Sync status to trigger frontend refresh
-            syncTableStatus(req, row.TableId).catch(() => {});
+            syncTableStatus(req, row.TableId).catch(() => { });
             req.app.get("io")?.emit("tables_updated");
             req.app.get("io")?.emit("table_status_updated", {
               tableId: cleanTableId.toLowerCase(),
@@ -2054,7 +2139,7 @@ router.post("/update-item-status", async (req, res) => {
 
     if (resolvedTableId) {
       const cleanTableId = String(resolvedTableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
-      syncTableStatus(req, resolvedTableId).catch(() => {});
+      syncTableStatus(req, resolvedTableId).catch(() => { });
       req.app.get("io")?.emit("cart_updated", {
         tableId: cleanTableId,
       });
@@ -2074,7 +2159,8 @@ router.get("/active-kitchen", async (req, res) => {
         d.OrderDetailId as lineItemId, d.DishId as id, d.Quantity as qty, d.StatusCode, 
         d.PricePerUnit as price,
         h.OrderNumber as orderId, dish.Name as name, h.Tableno as tableNo, 
-        d.Remarks as note, d.ModifiersJSON, d.ComboDetailsJSON, d.isTakeAway, DATEDIFF(SECOND, d.CreatedOn, GETDATE()) as elapsedSeconds,
+        d.Remarks as note, d.ModifiersJSON, d.ComboDetailsJSON, d.isTakeAway, 
+        DATEDIFF(SECOND, ISNULL(d.CreatedOn, h.CreatedOn), GETDATE()) as elapsedSeconds,
         ISNULL(ckt.KitchenTypeCode, '0') as KitchenTypeCode, 
         ISNULL(ISNULL(ckt.KitchenTypeName, cat.CategoryName), 'KITCHEN') as KitchenTypeName,
         pm.PrinterPath as PrinterIP,
@@ -2121,9 +2207,9 @@ router.get("/active-kitchen", async (req, res) => {
             orderType: isTakeaway ? "TAKEAWAY" : "DINE_IN",
             tableId: row.TableId
               ? String(row.TableId)
-                  .replace(/^\{|\}$/g, "")
-                  .trim()
-                  .toLowerCase()
+                .replace(/^\{|\}$/g, "")
+                .trim()
+                .toLowerCase()
               : undefined,
             tableNo: isTakeaway ? null : String(row.tableNo).trim(),
             section: normalizedSection,
@@ -2134,7 +2220,7 @@ router.get("/active-kitchen", async (req, res) => {
               : null,
           },
           items: [],
-          createdAt: Date.now() - row.elapsedSeconds * 1000,
+          createdAt: Date.now() - Math.max(0, Math.min(86400, Number(row.elapsedSeconds) || 0)) * 1000,
         };
       }
       const statusMap = {

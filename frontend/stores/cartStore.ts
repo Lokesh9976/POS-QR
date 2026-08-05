@@ -79,6 +79,35 @@ const getModifierKey = (mods?: any[]) => {
     .join("|");
 };
 
+export const getComboKey = (comboSelections?: any[]) => {
+  if (!comboSelections) return "";
+  let itemsList: any[] = [];
+  if (Array.isArray(comboSelections)) {
+    comboSelections.forEach((g: any) => {
+      const opts = g.items || g.options || [];
+      if (Array.isArray(opts)) {
+        opts.forEach((o: any) => {
+          itemsList.push(String(o.dishId || o.id || o.name || ""));
+        });
+      }
+    });
+  } else if (typeof comboSelections === "object") {
+    const groups = (comboSelections as any).groups || [];
+    if (Array.isArray(groups)) {
+      groups.forEach((g: any) => {
+        const opts = g.items || g.options || [];
+        if (Array.isArray(opts)) {
+          opts.forEach((o: any) => {
+            itemsList.push(String(o.dishId || o.id || o.name || ""));
+          });
+        }
+      });
+    }
+  }
+  if (itemsList.length === 0) return "";
+  return itemsList.sort().join("|");
+};
+
 const isOpenPriceItem = (item?: any) => {
   if (!item) return false;
   return Number(item.IsOpenItem) === 1 || item.IsOpenItem === true || item.IsOpenItem === 'true' || item.IsOpenItem === '1';
@@ -206,22 +235,30 @@ const normalizeCartItem = (item: any, fallback: Partial<CartItem> = {}): CartIte
   const isCombo = getNormalizedBoolean(item.isCombo, item.IsCombo, item.ComboDetailsJSON, fallback.isCombo);
   const comboSelections = incomingComboSelections || _comboGroups || fallback.comboSelections || undefined;
 
-  let finalBasePrice = Number(item.basePrice ?? _comboBasePrice ?? fallback.basePrice ?? originalPrice);
-  let finalPrice = originalPrice;
+  let finalBasePrice = Number(item.basePrice ?? _comboBasePrice ?? fallback.basePrice ?? 0);
+  let finalPrice = Number(item.price ?? item.Price ?? item.Cost ?? fallback.price ?? 0);
 
-  if (isCombo && Array.isArray(comboSelections)) {
+  if (finalPrice === 0) {
     let surchargeTotal = 0;
-    comboSelections.forEach((group: any) => {
-      const itemsList = group.items || group.options || [];
-      if (Array.isArray(itemsList)) {
-        itemsList.forEach((opt: any) => {
-          surchargeTotal += Number(opt.surcharge || 0) + Number(opt.dishPrice || 0);
-        });
-      }
-    });
-    if (finalPrice <= finalBasePrice || finalPrice === 0) {
-      finalPrice = finalBasePrice + surchargeTotal;
+    if (isCombo && Array.isArray(comboSelections)) {
+      comboSelections.forEach((group: any) => {
+        const itemsList = group.items || group.options || [];
+        if (Array.isArray(itemsList)) {
+          itemsList.forEach((opt: any) => {
+            surchargeTotal += Number(opt.surcharge || 0) + Number(opt.dishPrice || 0);
+          });
+        }
+      });
     }
+
+    let modifierTotal = 0;
+    if (Array.isArray(modifiers)) {
+      modifiers.forEach((m: any) => {
+        modifierTotal += Number(m.Price ?? m.price ?? 0);
+      });
+    }
+
+    finalPrice = finalBasePrice + surchargeTotal + modifierTotal;
   }
  
   // 🚀 PERFORMANCE FIX: Construct cleanly instead of using 'delete' loop
@@ -527,7 +564,7 @@ export const useCartStore = create<CartState>()(
 
             if (p.isCombo || normalizedIncoming.isCombo) {
               if (p.isCombo !== normalizedIncoming.isCombo) return false;
-              if (JSON.stringify(p.comboSelections) !== JSON.stringify(normalizedIncoming.comboSelections)) return false;
+              if (getComboKey(p.comboSelections) !== getComboKey(normalizedIncoming.comboSelections)) return false;
             }
 
             return getModifierKey(p.modifiers) === newItemModKey;
@@ -1315,16 +1352,34 @@ export const useCartStore = create<CartState>()(
             const now = Date.now();
             const state = get();
             // 🚀 SMART CONTEXT MATCHING: Find context associated with table first
+            const cleanTableId = String(tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
             let currentContext = state.currentContextId;
             const activeOrderObj = useOrderContextStore.getState().currentOrder;
-            if (activeOrderObj?.tableId === tableId) {
-              currentContext = getContextId(activeOrderObj) || currentContext;
-            } else {
-              const allContexts = Object.keys(state.carts);
-              currentContext = allContexts.find(ctx => ctx.includes(tableId)) || currentContext;
+
+            if (activeOrderObj) {
+              const cleanActiveTableId = String(activeOrderObj.tableId || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
+              if (cleanActiveTableId === cleanTableId || (activeOrderObj.section && activeOrderObj.tableNo)) {
+                currentContext = getContextId(activeOrderObj) || currentContext;
+              }
             }
 
-            if (!currentContext) return;
+            if (!currentContext && cleanTableId) {
+              const { useTableStatusStore } = require("./tableStatusStore");
+              const tableStatus = useTableStatusStore.getState().tableMap[cleanTableId];
+              if (tableStatus?.section && tableStatus?.tableNo) {
+                currentContext = getContextId({ orderType: "DINE_IN", section: tableStatus.section, tableNo: tableStatus.tableNo }) || currentContext;
+              }
+            }
+
+            if (!currentContext) {
+              const allContexts = Object.keys(state.carts);
+              currentContext = allContexts.find(ctx => ctx.includes(tableId)) || null;
+            }
+
+            if (!currentContext) {
+              if (__DEV__) console.warn(`⚠️ [CartStore] Could not resolve context for tableId: ${tableId}`);
+              return;
+            }
 
             // 🛡️ CLEAR LOCK: Reject fetches during a manual clear
             if (state.isClearing[currentContext]) {
@@ -1366,28 +1421,16 @@ export const useCartStore = create<CartState>()(
             // 🚀 SMART CONTEXT MATCHING: Find the context associated with this table
             let resolvedContextId: string | null = currentContext;
 
-            // 1. If this table matches the currently open order
-            if (activeOrderObj?.tableId === tableId) {
-              resolvedContextId = getContextId(activeOrderObj) || resolvedContextId;
-              if (resolvedContextId && !state.currentContextId) {
-                set({ currentContextId: resolvedContextId });
+            if (!resolvedContextId && cleanTableId) {
+              const { useTableStatusStore } = require("./tableStatusStore");
+              const tableStatus = useTableStatusStore.getState().tableMap[cleanTableId];
+              if (tableStatus?.section && tableStatus?.tableNo) {
+                resolvedContextId = getContextId({ orderType: "DINE_IN", section: tableStatus.section, tableNo: tableStatus.tableNo });
               }
-            } else {
-              // 2. Try to find the context in ActiveOrders
-              const { useActiveOrdersStore } = require("./activeOrdersStore");
-              const activeOrder = useActiveOrdersStore.getState().activeOrders.find((o: any) => {
-                if (o.context?.tableId && tableId) {
-                  return String(o.context.tableId).replace(/^\{|\}$/g, "").trim().toLowerCase() === String(tableId).replace(/^\{|\}$/g, "").trim().toLowerCase();
-                }
-                return false;
-              });
-              if (activeOrder) {
-                resolvedContextId = getContextId(activeOrder.context);
-              } else {
-                // 3. Fallback: Search all existing cart keys
-                const allContexts = Object.keys(state.carts);
-                resolvedContextId = allContexts.find(ctx => ctx.includes(tableId)) || null;
-              }
+            }
+
+            if (resolvedContextId && (!state.currentContextId || state.currentContextId !== resolvedContextId)) {
+              set({ currentContextId: resolvedContextId });
             }
 
             if (!resolvedContextId) {
@@ -1486,7 +1529,11 @@ export const useCartStore = create<CartState>()(
             localPendingItems.forEach(localItem => {
               const existsOnServer = filteredDbItems.some((dbItem: CartItem) => {
                 if (dbItem.lineItemId === localItem.lineItemId) return true;
-                if (dbItem.id === localItem.id && getModifierKey(dbItem.modifiers) === getModifierKey(localItem.modifiers)) {
+                if (
+                  dbItem.id === localItem.id &&
+                  getModifierKey(dbItem.modifiers) === getModifierKey(localItem.modifiers) &&
+                  getComboKey(dbItem.comboSelections) === getComboKey(localItem.comboSelections)
+                ) {
                   const dbStatus = dbItem.status || "NEW";
                   const localStatus = localItem.status || "NEW";
                   if (dbStatus !== localStatus) {

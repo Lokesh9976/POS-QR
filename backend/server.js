@@ -184,7 +184,7 @@ async function pollTables() {
 
       const currentTables = result.recordset || [];
       currentTables.forEach((table) => {
-        const tableId = String(table.id).toLowerCase();
+        const tableId = String(table.id || "").replace(/^\{|\}$/g, "").trim().toLowerCase();
         const prevState = previousTablesState.get(tableId);
 
         const hasChanged = !prevState || 

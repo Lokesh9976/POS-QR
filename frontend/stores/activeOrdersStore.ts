@@ -416,6 +416,7 @@ const storeCreator: StateCreator<
           
           return {
             ...normalizedApiOrder,
+            createdAt: (localOrder && localOrder.createdAt) ? localOrder.createdAt : normalizedApiOrder.createdAt,
             items: normalizedApiOrder.items.map((apiItem: any) => {
               const localItem = localOrder.items.find(li => li.lineItemId === apiItem.lineItemId);
               if (localItem && localItem.status !== apiItem.status) {

@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Theme } from "../../constants/theme";
-import { useCartStore } from "../../stores/cartStore";
+import { useCartStore, getContextId, setCurrentContext } from "../../stores/cartStore";
 import { useOrderContextStore } from "../../stores/orderContextStore";
 import { useCompanySettingsStore } from "../../stores/companySettingsStore";
 import { useGeneralSettingsStore } from "../../stores/generalSettingsStore";
@@ -465,11 +465,18 @@ export default function CustomerOrderStatusScreen() {
   }, []);
 
   useEffect(() => {
-    if (orderContext?.tableId) {
-      // 🚀 FORCE FETCH: Bypasses Latency Shield since we navigate here immediately after placing an order
-      fetchCartFromDB(orderContext.tableId, true);
+    if (orderContext) {
+      const ctxId = getContextId(orderContext);
+      if (ctxId) {
+        setCurrentContext(ctxId);
+      }
+      const targetTableId = orderContext.tableId || orderContext.tableNo;
+      if (targetTableId) {
+        // 🚀 FORCE FETCH: Bypasses Latency Shield since we navigate here immediately after placing an order
+        fetchCartFromDB(targetTableId, true);
+      }
     }
-  }, [orderContext?.tableId]);
+  }, [orderContext]);
 
   useEffect(() => {
     if (!orderContext?.tableId) return;
@@ -927,7 +934,7 @@ export default function CustomerOrderStatusScreen() {
                   styles.stepDot,
                   {
                     backgroundColor:
-                      getOverallStatus() === "Ready to Serve" || getOverallStatus() === "All Served"
+                      getOverallStatus() === "All Served"
                         ? Theme.primary
                         : "#E2E8F0",
                   },
@@ -1029,9 +1036,21 @@ export default function CustomerOrderStatusScreen() {
 
                 {/* Regular Modifiers */}
                 {item.modifiers && item.modifiers.length > 0 && (
-                  <Text style={styles.itemMods}>
-                    Customizations: {item.modifiers.map((m: any) => m.ModifierName || m.modifierName).join(", ")}
-                  </Text>
+                  <View style={styles.modifierContainer}>
+                    {item.modifiers.map((m: any, idx: number) => {
+                      const name = m.ModifierName || m.modifierName || m.name || "";
+                      const price = Number(m.Price || m.price || 0);
+                      return (
+                        <View key={idx} style={styles.modifierTag}>
+                          <Text style={styles.modifierBullet}>•</Text>
+                          <Text style={styles.modifierName}>{name}</Text>
+                          {price > 0 && (
+                            <Text style={styles.modifierPrice}> (+{currencySymbol}{price.toFixed(2)})</Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
                 )}
 
                 <Text style={styles.itemQty}>Qty: {item.qty}</Text>
@@ -1588,6 +1607,39 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0F172A",
     letterSpacing: -0.2,
+  },
+  modifierContainer: {
+    marginTop: 6,
+    marginBottom: 4,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  modifierTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: Theme.primary,
+  },
+  modifierBullet: {
+    fontSize: 12,
+    color: Theme.primary,
+    marginRight: 4,
+    fontWeight: "bold",
+  },
+  modifierName: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  modifierPrice: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#64748B",
   },
   itemQty: {
     fontSize: 13,

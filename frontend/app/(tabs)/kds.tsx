@@ -77,7 +77,9 @@ const OrderCard = React.memo(function OrderCard({ item, cardHeight, pulseAnim, g
     : 0;
   const latestSent = itemsMaxTs || itemTs;
   const isValidTs = latestSent > 1000000;
-  const elapsed = isValidTs ? Math.max(0, now - latestSent) : 0;
+  const rawElapsed = isValidTs ? Math.max(0, now - latestSent) : 0;
+  // 🛡️ SANITY CAP: Maximum 12 hours (43,200,000ms) to prevent multi-day stale DB dates
+  const elapsed = rawElapsed > 43200000 ? 0 : rawElapsed;
   const minutes = Math.floor(elapsed / 60000);
   const seconds = Math.floor((elapsed % 60000) / 1000);
   const urgency = getUrgency(minutes);

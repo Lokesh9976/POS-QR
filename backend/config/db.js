@@ -13,13 +13,13 @@ const dbConfig = {
     encrypt: false,
     trustServerCertificate: true,
     enableArithAbort: true,
-    connectTimeout: 15000, 
-    requestTimeout: 15000,
+    connectTimeout: 30000, 
+    requestTimeout: 30000,
     appName: "POS_System",
     keepAlive: true // Enable TCP keepAlive
   },
-  connectionTimeout: 15000,
-  requestTimeout: 15000,
+  connectionTimeout: 30000,
+  requestTimeout: 30000,
   pool: {
     max: 100,
     min: 0,
@@ -37,28 +37,38 @@ console.log(`   Connection Timeout: ${dbConfig.connectionTimeout}ms`);
 
 let poolInstance = null;
 
-const poolPromise = new sql.ConnectionPool(dbConfig)
-  .connect()
-  .then((pool) => {
-    console.log("✅ Connected to MSSQL Successfully");
-    // Register pool error listener to handle network/socket drops gracefully
-    pool.on("error", (err) => {
-      console.error("⚠️ [Database Pool Error] General pool connection error:", err.message);
-    });
-    poolInstance = pool;
-    return pool;
-  })
-  .catch((err) => {
-    console.error("❌ Database Connection Failed:", err.message);
-    console.error("   Error Code:", err.code);
-    console.error("   Please verify your .env file contains:");
-    console.error("   - DB_SERVER: " + dbConfig.server);
-    console.error("   - DB_PORT: " + dbConfig.port);
-    console.error("   - DB_NAME: " + dbConfig.database);
-    console.error("   - DB_USER: " + dbConfig.user);
-    console.error("   - DB_PASSWORD: (hidden)");
-    return null;
-  });
+async function connectWithRetry(retries = 5, delay = 3000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      console.log(`🔌 [Database] Connecting to ${dbConfig.server}:${dbConfig.port}... (Attempt ${i + 1}/${retries})`);
+      const pool = await new sql.ConnectionPool(dbConfig).connect();
+      console.log("✅ Connected to MSSQL Successfully");
+      pool.on("error", (err) => {
+        console.error("⚠️ [Database Pool Error] General pool connection error:", err.message);
+      });
+      poolInstance = pool;
+      return pool;
+    } catch (err) {
+      console.error(`❌ [Database Connection Attempt ${i + 1} Failed]:`, err.message);
+      if (i < retries - 1) {
+        console.log(`⏳ Retrying database connection in ${delay / 1000}s...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      } else {
+        console.error("❌ All database connection attempts failed.");
+        console.error("   Please verify your .env file contains:");
+        console.error("   - DB_SERVER: " + dbConfig.server);
+        console.error("   - DB_PORT: " + dbConfig.port);
+        console.error("   - DB_NAME: " + dbConfig.database);
+        console.error("   - DB_USER: " + dbConfig.user);
+        console.error("   - DB_PASSWORD: (hidden)");
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+const poolPromise = connectWithRetry(5, 3000);
 
 module.exports = { 
     sql, 

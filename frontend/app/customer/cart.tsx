@@ -180,7 +180,7 @@ const SpeederLoader = () => {
 
 export default function CustomerCartScreen() {
   const router = useRouter();
-  const { carts, currentContextId, updateCartItemQty, syncCartWithDB, checkoutOrder } = useCartStore();
+  const { carts, currentContextId, updateCartItemQty, syncCartWithDB, checkoutOrder, cancelPendingSync } = useCartStore();
   const orderContext = useOrderContextStore((state) => state.currentOrder);
   const settings = useCompanySettingsStore((state: any) => state.settings);
   
@@ -393,176 +393,102 @@ export default function CustomerCartScreen() {
     setIsAnimating(true);
     setSubmitting(true);
 
-    // 🚀 Reset values for fluid progress loading animation
-    animButtonScale.setValue(1);
-    animTextOpacity.setValue(1);
-    animButtonWidth.setValue(0); // Repurposed for progress bar width (0 to 1 -> 0% to 100%)
-    animButtonColor.setValue(0); // 0 = Orange (Theme.primary), 1 = Emerald Green
-    animSuccessOpacity.setValue(0);
-    animLoaderOpacity.setValue(1); // Full opacity at start
+    try {
+      const sendResponse = await fetch(`${API_URL}/api/orders/send`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tableId: orderContext.tableId,
+          orderType: "DINE_IN",
+          entryStatus: "q",
+          discountAmount: discountAmt,
+          discountRemarks: applyPromo && activePromoCode ? `Applied Promo Code: ${activePromoCode}` : null,
+          mobileNo: userInfo?.Phone || null,
+          customerName: userInfo?.FullName || userInfo?.UserName || null,
+          items: currentCart.map(item => ({
+            id: item.id,
+            lineItemId: item.lineItemId || item.id,
+            name: item.name,
+            qty: item.qty,
+            price: item.price,
+            modifiers: item.modifiers || [],
+            status: "SENT",
+            note: notes,
+            isCombo: item.isCombo,
+            comboSelections: item.comboSelections || [],
+          }))
+        })
+      });
 
-    const { Easing } = require("react-native");
-
-    Animated.sequence([
-      // 1. Click press bounce + fade out "Place Order" text
-      Animated.parallel([
-        Animated.timing(animButtonScale, {
-          toValue: 0.95,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(animTextOpacity, {
-          toValue: 0,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]),
-      // 2. Spring button back up + flow progress overlay + subtle pulse wave
-      Animated.parallel([
-        Animated.spring(animButtonScale, {
-          toValue: 1,
-          friction: 4,
-          tension: 40,
-          useNativeDriver: true,
-        }),
-        // Smoothly fill progress bar to 100%
-        Animated.timing(animButtonWidth, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-          useNativeDriver: false,
-        }),
-        // Energy pulse wave
-        Animated.sequence([
-          Animated.timing(animButtonScale, { toValue: 1.02, duration: 300, useNativeDriver: true }),
-          Animated.timing(animButtonScale, { toValue: 0.98, duration: 300, useNativeDriver: true }),
-          Animated.timing(animButtonScale, { toValue: 1.02, duration: 300, useNativeDriver: true }),
-          Animated.timing(animButtonScale, { toValue: 1, duration: 300, useNativeDriver: true }),
-        ])
-      ]),
-      // 3. Complete progress: smoothly morph color to success green
-      Animated.timing(animButtonColor, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: false,
-      }),
-      // 4. Spring pop checkmark and "Confirmed!" text
-      Animated.timing(animSuccessOpacity, {
-        toValue: 1,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      // Satifying brief hold
-      Animated.delay(400),
-    ]).start(async () => {
-      try {
-        const sendResponse = await fetch(`${API_URL}/api/orders/send`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            tableId: orderContext.tableId,
-            orderType: "DINE_IN",
-            entryStatus: "q",
-            discountAmount: discountAmt,
-            discountRemarks: applyPromo && activePromoCode ? `Applied Promo Code: ${activePromoCode}` : null,
-            mobileNo: userInfo?.Phone || null,
-            customerName: userInfo?.FullName || userInfo?.UserName || null,
-            items: currentCart.map(item => ({
-              id: item.id,
-              lineItemId: item.lineItemId || item.id,
-              name: item.name,
-              qty: item.qty,
-              price: item.price,
-              modifiers: item.modifiers || [],
-              status: "SENT",
-              note: notes,
-              isCombo: item.isCombo,
-              comboSelections: item.comboSelections || [],
-            }))
-          })
-        });
-
-        if (sendResponse.ok) {
-          // Update local storage promo amount on successful send
-          if (applyPromo && activePromoCode) {
-            const updatedAmount = Math.max(0, activePromoAmount - discountAmt);
-            if (userInfo && typeof localStorage !== "undefined") {
-              const updatedUser = { 
-                ...userInfo, 
-                PromoCode: activePromoCode, 
-                PromoAmount: updatedAmount,
-                Promocode: activePromoCode,
-                Promoamount: updatedAmount 
-              };
-              localStorage.setItem("qr_pos_user", JSON.stringify(updatedUser));
-              setUserInfo(updatedUser);
-            }
-            if (appliedPromo) {
-              setAppliedPromo({ code: activePromoCode, amount: updatedAmount });
-            }
-            if (updatedAmount <= 0) {
-              setApplyPromo(false);
-            }
+      if (sendResponse.ok) {
+        // Update local storage promo amount on successful send
+        if (applyPromo && activePromoCode) {
+          const updatedAmount = Math.max(0, activePromoAmount - discountAmt);
+          if (userInfo && typeof localStorage !== "undefined") {
+            const updatedUser = { 
+              ...userInfo, 
+              PromoCode: activePromoCode, 
+              PromoAmount: updatedAmount,
+              Promocode: activePromoCode,
+              Promoamount: updatedAmount 
+            };
+            localStorage.setItem("qr_pos_user", JSON.stringify(updatedUser));
+            setUserInfo(updatedUser);
           }
-
-          // ✅ IMMEDIATE CLEAR: Wipe all local "NEW" draft items right away
-          const ctxId = currentContextId;
-          if (ctxId) {
-            useCartStore.setState((state) => {
-              const existing = state.carts[ctxId] || [];
-              const clearedCart = existing.filter(item => item.status && item.status !== "NEW");
-              const newQtyMap: Record<string, number> = {};
-              clearedCart.forEach(item => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
-              return {
-                carts: { ...state.carts, [ctxId]: clearedCart },
-                cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
-                lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 }, // Reset to 0 so next fetch resolves instantly
-              };
-            });
+          if (appliedPromo) {
+            setAppliedPromo({ code: activePromoCode, amount: updatedAmount });
           }
-
-          // Hydrate from DB to ensure state is synchronized with server
-          if (orderContext.tableId) {
-            await useCartStore.getState().fetchCartFromDB(orderContext.tableId, true);
+          if (updatedAmount <= 0) {
+            setApplyPromo(false);
           }
-          
-          // Smoothly fade + scale out the loader overlay before showing success modal
-          Animated.parallel([
-            Animated.timing(animLoaderOpacity, {
-              toValue: 0,
-              duration: 600,
-              easing: Easing.out(Easing.quad),
-              useNativeDriver: true,
-            }),
-            Animated.timing(animLoaderScale, {
-              toValue: 1.15,
-              duration: 600,
-              easing: Easing.out(Easing.quad),
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            animLoaderOpacity.setValue(1);
-            animLoaderScale.setValue(1);
-            setSubmitting(false);
-            setIsAnimating(false);
-            setShowSuccessModal(true);
-          });
-        } else {
-          const errText = await sendResponse.text();
-          console.error("Kitchen Send Error:", errText);
-          Alert.alert("Order Failed", "Failed to send items to the kitchen. Please contact staff.");
-          setIsAnimating(false);
-          setSubmitting(false);
         }
-      } catch (err) {
-        console.error("Error placing order:", err);
-        Alert.alert("Network Error", "Failed to contact order server. Please try again.");
+
+        // 🛑 CANCEL any pending debounced syncCartWithDB FIRST
+        cancelPendingSync();
+
+        // ✅ IMMEDIATE CLEAR: Wipe all local "NEW" draft items right away
+        const ctxId = currentContextId;
+        if (ctxId) {
+          useCartStore.setState((state) => {
+            const existing = state.carts[ctxId] || [];
+            const clearedCart = existing.filter(item => item.status && item.status !== "NEW");
+            const newQtyMap: Record<string, number> = {};
+            clearedCart.forEach(item => { newQtyMap[item.id] = (newQtyMap[item.id] || 0) + item.qty; });
+            return {
+              carts: { ...state.carts, [ctxId]: clearedCart },
+              cartQtyMap: { ...state.cartQtyMap, [ctxId]: newQtyMap },
+              lastLocalUpdate: { ...state.lastLocalUpdate, [ctxId]: 0 },
+            };
+          });
+        }
+
+        // Hydrate from DB to ensure state is synchronized with server
+        if (orderContext?.tableId) {
+          try {
+            await useCartStore.getState().fetchCartFromDB(orderContext.tableId, true);
+          } catch (err) {
+            console.warn("Post-send fetchCartFromDB warning:", err);
+          }
+        }
+
+        setSubmitting(false);
+        setIsAnimating(false);
+        setShowSuccessModal(true);
+      } else {
+        const errText = await sendResponse.text();
+        console.error("Kitchen Send Error:", errText);
+        Alert.alert("Order Failed", "Failed to send items to the kitchen. Please contact staff.");
         setIsAnimating(false);
         setSubmitting(false);
       }
-    });
+    } catch (err) {
+      console.error("Error placing order:", err);
+      Alert.alert("Network Error", "Failed to contact order server. Please try again.");
+      setIsAnimating(false);
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -613,9 +539,21 @@ export default function CustomerCartScreen() {
 
               {/* Regular Modifiers */}
               {item.modifiers && item.modifiers.length > 0 && (
-                <Text style={styles.itemMods}>
-                  Customizations: {item.modifiers.map((m: any) => m.ModifierName || m.modifierName).join(", ")}
-                </Text>
+                <View style={styles.modifierContainer}>
+                  {item.modifiers.map((m: any, idx: number) => {
+                    const name = m.ModifierName || m.modifierName || m.name || "";
+                    const price = Number(m.Price || m.price || 0);
+                    return (
+                      <View key={idx} style={styles.modifierTag}>
+                        <Text style={styles.modifierBullet}>•</Text>
+                        <Text style={styles.modifierName}>{name}</Text>
+                        {price > 0 && (
+                          <Text style={styles.modifierPrice}> (+{currencySymbol}{price.toFixed(2)})</Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
               )}
 
               <Text style={styles.itemPrice}>{currencySymbol}{(Number(item.price || 0) * (item.qty || 1)).toFixed(2)}</Text>
@@ -913,6 +851,39 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 100,
+  },
+  modifierContainer: {
+    marginTop: 6,
+    marginBottom: 4,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  modifierTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: Theme.primary,
+  },
+  modifierBullet: {
+    fontSize: 12,
+    color: Theme.primary,
+    marginRight: 4,
+    fontWeight: "bold",
+  },
+  modifierName: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  modifierPrice: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#64748B",
   },
   sectionTitle: {
     fontSize: 16,
