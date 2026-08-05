@@ -121,7 +121,8 @@ function _formatItem(item) {
     item.modifiers.forEach(m => {
       const modName = m.ModifierName || m.modifierName || m.name || m.ModifierNameEn || "";
       if (modName) {
-        text += `[L]      <B>+ ${modName}</B>\n`;
+        const formattedMod = modName.split(' ').filter(Boolean).join('  ');
+        text += `[L]      <B>+   ${formattedMod}</B>\n`;
       }
     });
   }
@@ -130,7 +131,8 @@ function _formatItem(item) {
     item.comboSelections.forEach(g => {
       if (Array.isArray(g.items)) {
         g.items.forEach(opt => {
-          text += `[L]      - ${opt.name}\n`;
+          const formattedCombo = opt.name.split(' ').filter(Boolean).join('  ');
+          text += `[L]      <B>-   ${formattedCombo}</B>\n`;
         });
       }
     });

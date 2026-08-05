@@ -1213,14 +1213,17 @@ class UniversalPrinter {
 
           if (item.modifiers && item.modifiers.length > 0) {
             item.modifiers.forEach((m: any) => {
-              text += `[L]    <B>+ ${m.ModifierName || m.name}</B>\n`;
+              const modName = m.ModifierName || m.name || "";
+              const formattedMod = modName.split(' ').filter(Boolean).join('  ');
+              text += `[L]    <B>+   ${formattedMod}</B>\n`;
             });
           }
 
           if (item.comboSelections && item.comboSelections.length > 0) {
             item.comboSelections.forEach((g: any) => {
               g.items?.forEach((opt: any) => {
-                text += `[L]    <B>- ${opt.name}</B>\n`;
+                const formattedCombo = opt.name.split(' ').filter(Boolean).join('  ');
+                text += `[L]    <B>-   ${formattedCombo}</B>\n`;
               });
             });
           }
@@ -1263,14 +1266,17 @@ class UniversalPrinter {
 
         if (item.modifiers && item.modifiers.length > 0) {
           item.modifiers.forEach((m: any) => {
-            text += `[L]    <B>+ ${m.ModifierName || m.name}</B>\n`;
+            const modName = m.ModifierName || m.name || "";
+            const formattedMod = modName.split(' ').filter(Boolean).join('  ');
+            text += `[L]    <B>+   ${formattedMod}</B>\n`;
           });
         }
 
         if (item.comboSelections && item.comboSelections.length > 0) {
           item.comboSelections.forEach((g: any) => {
             g.items?.forEach((opt: any) => {
-              text += `[L]    <B>- ${opt.name}</B>\n`;
+              const formattedCombo = opt.name.split(' ').filter(Boolean).join('  ');
+              text += `[L]    <B>-   ${formattedCombo}</B>\n`;
             });
           });
         }
@@ -2091,7 +2097,7 @@ class UniversalPrinter {
                     id: opt.dishId,
                     qty: item.quantity || item.qty || 1,
                     price: 0,
-                    name: `${opt.name}\n(Combo - ${item.name})`,
+                    name: `${opt.name} (Combo: ${item.name})`,
                     KitchenTypeCode: optKitchenCode,
                     KitchenTypeName: opt.KitchenTypeName || opt.kitchenTypeName,
                     PrinterIP: opt.PrinterIP || opt.printerIp,
