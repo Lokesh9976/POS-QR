@@ -1290,8 +1290,6 @@ class UniversalPrinter {
       text += "[L]--------------------------------\n";
       text += `[C]<font size='big'><B>TABLE NO : ${tableNo}</B></font>\n`;
       text += "[L]--------------------------------\n";
-    } else {
-      text += `[L]Table No: ${tableNo}\n`;
     }
 
     if (kitchenName && kitchenName !== "KDS") {
