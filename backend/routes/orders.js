@@ -1477,10 +1477,12 @@ router.get("/cart/:tableId", async (req, res) => {
         const activeDbOrder = await pool
           .request()
           .input("tableNo", sql.VarChar(20), String(tableNumber || ""))
+          .input("tid", sql.VarChar(50), cleanId)
           .query(`
             SELECT TOP 1 OrderNumber 
             FROM RestaurantOrderCur 
-            WHERE Tableno = @tableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+            WHERE (RTRIM(LTRIM(Tableno)) = RTRIM(LTRIM(@tableNo)) OR RTRIM(LTRIM(Tableno)) = RTRIM(LTRIM(@tid)))
+              AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
               AND OrderNumber IS NOT NULL AND OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '') AND OrderNumber NOT LIKE 'TEMP-%'
             ORDER BY CreatedOn DESC
           `);
@@ -1504,10 +1506,12 @@ router.get("/cart/:tableId", async (req, res) => {
       const discRes = await pool
         .request()
         .input("tableNo", sql.VarChar(20), String(tableNumber || ""))
+        .input("tid", sql.VarChar(50), cleanId)
         .query(`
           SELECT TOP 1 DiscountAmount, DiscountRemarks 
           FROM RestaurantOrderCur 
-          WHERE Tableno = @tableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
+          WHERE (RTRIM(LTRIM(Tableno)) = RTRIM(LTRIM(@tableNo)) OR RTRIM(LTRIM(Tableno)) = RTRIM(LTRIM(@tid)))
+            AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
           ORDER BY CreatedOn DESC
         `);
       const discRow = discRes.recordset[0];
@@ -1568,9 +1572,9 @@ router.get("/cart/:tableId", async (req, res) => {
           AND d.StatusCode <> 0
           AND ISNULL(d.isSettlement, 0) = 0
           AND (
-            h.Tableno = @tableNo
-            OR h.Tableno = @tid
-            OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER)))
+            RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(@tableNo))
+            OR RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(@tid))
+            OR RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM((SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER)))))
             OR h.OrderNumber = @orderNo
           )
         ORDER BY d.CreatedOn ASC
