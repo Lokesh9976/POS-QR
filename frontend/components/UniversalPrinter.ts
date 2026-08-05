@@ -1213,14 +1213,14 @@ class UniversalPrinter {
 
           if (item.modifiers && item.modifiers.length > 0) {
             item.modifiers.forEach((m: any) => {
-              text += `[L]    <font size='big'><B>+ ${m.ModifierName || m.name}</B></font>\n`;
+              text += `[L]    <B>+ ${m.ModifierName || m.name}</B>\n`;
             });
           }
 
           if (item.comboSelections && item.comboSelections.length > 0) {
             item.comboSelections.forEach((g: any) => {
               g.items?.forEach((opt: any) => {
-                text += `[L]    <font size='big'><B>↳ ${opt.name}</B></font>\n`;
+                text += `[L]    <B>- ${opt.name}</B>\n`;
               });
             });
           }
@@ -1263,14 +1263,14 @@ class UniversalPrinter {
 
         if (item.modifiers && item.modifiers.length > 0) {
           item.modifiers.forEach((m: any) => {
-            text += `[L]    <font size='big'><B>+ ${m.ModifierName || m.name}</B></font>\n`;
+            text += `[L]    <B>+ ${m.ModifierName || m.name}</B>\n`;
           });
         }
 
         if (item.comboSelections && item.comboSelections.length > 0) {
           item.comboSelections.forEach((g: any) => {
             g.items?.forEach((opt: any) => {
-              text += `[L]    <font size='big'><B>↳ ${opt.name}</B></font>\n`;
+              text += `[L]    <B>- ${opt.name}</B>\n`;
             });
           });
         }

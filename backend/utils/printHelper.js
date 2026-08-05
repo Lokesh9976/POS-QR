@@ -121,7 +121,7 @@ function _formatItem(item) {
     item.modifiers.forEach(m => {
       const modName = m.ModifierName || m.modifierName || m.name || m.ModifierNameEn || "";
       if (modName) {
-        text += `[L]      <font size='big'><B>+ ${modName}</B></font>\n`;
+        text += `[L]      <B>+ ${modName}</B>\n`;
       }
     });
   }
@@ -130,7 +130,7 @@ function _formatItem(item) {
     item.comboSelections.forEach(g => {
       if (Array.isArray(g.items)) {
         g.items.forEach(opt => {
-          text += `[L]    ↳ ${opt.name}\n`;
+          text += `[L]      - ${opt.name}\n`;
         });
       }
     });
