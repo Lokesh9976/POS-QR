@@ -20,6 +20,7 @@ export interface GeneralSettings {
   showPromoCode: boolean;
   enableOnlinePayment: boolean;
   enableQROrderAutoPrint: boolean;
+  enableComboPrint: boolean;
 }
 
 interface GeneralSettingsState {
@@ -49,6 +50,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
         showPromoCode: true,
         enableOnlinePayment: true,
         enableQROrderAutoPrint: true,
+        enableComboPrint: false,
       },
       loading: false,
 
@@ -78,6 +80,7 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
                 showPromoCode: data.ShowPromoCode !== undefined ? Boolean(data.ShowPromoCode) : true,
                 enableOnlinePayment: data.EnableOnlinePayment !== undefined ? Boolean(data.EnableOnlinePayment) : true,
                 enableQROrderAutoPrint: data.EnableQROrderAutoPrint !== undefined ? Boolean(data.EnableQROrderAutoPrint) : true,
+                enableComboPrint: data.EnableComboPrint !== undefined ? Boolean(data.EnableComboPrint) : false,
               },
             }));
           }
@@ -97,9 +100,6 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
 
         try {
           // Fetch existing payment settings so we don't overwrite them with null in the API call
-          // Since the backend uses an UPSERT that expects all fields, we must fetch current first or rely on the backend ignoring nulls.
-          // Wait, backend does `.input("UPI", sql.NVarChar, upiId || null)` which could set it to null if we don't pass it.
-          // Let's fetch current settings first
           const getRes = await fetch(`${API_URL}/api/settings`);
           const currentData = await getRes.json();
           
@@ -122,6 +122,8 @@ export const useGeneralSettingsStore = create<GeneralSettingsState>()(
             showRewardPoints: updatedSettings.showRewardPoints,
             showPromoCode: updatedSettings.showPromoCode,
             enableOnlinePayment: updatedSettings.enableOnlinePayment,
+            enableQROrderAutoPrint: updatedSettings.enableQROrderAutoPrint,
+            enableComboPrint: updatedSettings.enableComboPrint,
           };
 
           const res = await fetch(`${API_URL}/api/settings/update`, {

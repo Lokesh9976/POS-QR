@@ -103,6 +103,7 @@ export default function GeneralSettingsScreen() {
   const [showPromoCode, setShowPromoCode] = useState(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
   const [enableOnlinePayment, setEnableOnlinePayment] = useState(settings.enableOnlinePayment !== undefined ? settings.enableOnlinePayment : true);
   const [enableQROrderAutoPrint, setEnableQROrderAutoPrint] = useState(settings.enableQROrderAutoPrint !== undefined ? settings.enableQROrderAutoPrint : true);
+  const [enableComboPrint, setEnableComboPrint] = useState(settings.enableComboPrint !== undefined ? settings.enableComboPrint : false);
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordValue, setPasswordValue] = useState("");
@@ -129,6 +130,7 @@ export default function GeneralSettingsScreen() {
     setShowPromoCode(settings.showPromoCode !== undefined ? settings.showPromoCode : true);
     setEnableOnlinePayment(settings.enableOnlinePayment !== undefined ? settings.enableOnlinePayment : true);
     setEnableQROrderAutoPrint(settings.enableQROrderAutoPrint !== undefined ? settings.enableQROrderAutoPrint : true);
+    setEnableComboPrint(settings.enableComboPrint !== undefined ? settings.enableComboPrint : false);
 
     let initialCheckoutFlow = settings.enableCheckoutFlow;
     let initialDirectProcess = settings.enableDirectProcessToPay;
@@ -216,6 +218,7 @@ export default function GeneralSettingsScreen() {
       showPromoCode,
       enableOnlinePayment,
       enableQROrderAutoPrint,
+      enableComboPrint,
     });
     setSaving(false);
 
@@ -272,6 +275,13 @@ export default function GeneralSettingsScreen() {
           icon: "print-outline",
           value: enableKDSPrint,
           onToggle: setEnableKDSPrint,
+        },
+        {
+          title: "Disable Combo Print",
+          desc: "If ON, do not print combo sub-items on kitchen printers. If OFF, print them.",
+          icon: "close-circle-outline",
+          value: enableComboPrint,
+          onToggle: setEnableComboPrint,
         },
       ]
     },

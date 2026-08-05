@@ -74,6 +74,14 @@ router.get("/", async (req, res) => {
       BEGIN
         ALTER TABLE AppSettings ADD EnableQROrderAutoPrint BIT DEFAULT 1 WITH VALUES;
       END
+
+      IF NOT EXISTS (
+        SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'AppSettings' AND COLUMN_NAME = 'EnableComboPrint'
+      )
+      BEGIN
+        ALTER TABLE AppSettings ADD EnableComboPrint BIT DEFAULT 0 WITH VALUES;
+      END
     `).catch(err => console.warn("Failed self-healing AppSettings column:", err.message));
 
     const settings = await getAppSettings();
@@ -81,7 +89,8 @@ router.get("/", async (req, res) => {
       ...(settings || {}),
       SVCIdentification: settings?.SVCIdentification !== undefined ? (settings.SVCIdentification ? 1 : 0) : 1,
       EnableOnlinePayment: settings?.EnableOnlinePayment !== undefined ? (settings.EnableOnlinePayment ? 1 : 0) : 1,
-      EnableQROrderAutoPrint: settings?.EnableQROrderAutoPrint !== undefined ? (settings.EnableQROrderAutoPrint ? 1 : 0) : 1
+      EnableQROrderAutoPrint: settings?.EnableQROrderAutoPrint !== undefined ? (settings.EnableQROrderAutoPrint ? 1 : 0) : 1,
+      EnableComboPrint: settings?.EnableComboPrint !== undefined ? (settings.EnableComboPrint ? 1 : 0) : 0
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -91,7 +100,7 @@ router.get("/", async (req, res) => {
 // 🔹 UPDATE Settings
 router.post("/update", async (req, res) => {
   try {
-    const { upiId, shopName, qrCodeUrl, enableKOT, enableKDS, enableCheckoutBill, enableCheckoutFlow, enableDirectProcessToPay, customerSideDisplay, enableGuestDetailsPopup, enableCashDrawer, SVCIdentification, enableKDSPrint, enableCombo, showLoyalty, showRewardPoints, showPromoCode, enableOnlinePayment, enableQROrderAutoPrint } = req.body;
+    const { upiId, shopName, qrCodeUrl, enableKOT, enableKDS, enableCheckoutBill, enableCheckoutFlow, enableDirectProcessToPay, customerSideDisplay, enableGuestDetailsPopup, enableCashDrawer, SVCIdentification, enableKDSPrint, enableCombo, showLoyalty, showRewardPoints, showPromoCode, enableOnlinePayment, enableQROrderAutoPrint, enableComboPrint } = req.body;
     const pool = await poolPromise;
 
     // Use an UPSERT logic (Update if exists, Insert if not)
@@ -115,6 +124,7 @@ router.post("/update", async (req, res) => {
       .input("ShowPromoCode", sql.Bit, showPromoCode !== undefined ? showPromoCode : 1)
       .input("EnableOnlinePayment", sql.Bit, enableOnlinePayment !== undefined ? enableOnlinePayment : 1)
       .input("EnableQROrderAutoPrint", sql.Bit, enableQROrderAutoPrint !== undefined ? enableQROrderAutoPrint : 1)
+      .input("EnableComboPrint", sql.Bit, enableComboPrint !== undefined ? enableComboPrint : 0)
       .query(`
         IF EXISTS (SELECT 1 FROM AppSettings)
         BEGIN
@@ -139,12 +149,13 @@ router.post("/update", async (req, res) => {
             ShowPromoCode = @ShowPromoCode,
             EnableOnlinePayment = @EnableOnlinePayment,
             EnableQROrderAutoPrint = @EnableQROrderAutoPrint,
+            EnableComboPrint = @EnableComboPrint,
             UpdatedOn = GETDATE()
         END
         ELSE
         BEGIN
-          INSERT INTO AppSettings (UPI_ID, ShopName, PayNow_QR_Url, EnableKOT, EnableKDS, EnableCheckoutBill, EnableCheckoutFlow, EnableDirectProcessToPay, CustomerSideDisplay, EnableGuestDetailsPopup, EnableCashDrawer, EnableKDSPrint, SVCIdentification, EnableCombo, ShowLoyalty, ShowRewardPoints, ShowPromoCode, EnableOnlinePayment, EnableQROrderAutoPrint, UpdatedOn)
-          VALUES (@UPI, @Shop, @QR, @EnableKOT, @EnableKDS, @EnableCheckoutBill, @EnableCheckoutFlow, @EnableDirectProcessToPay, @CustomerSideDisplay, @EnableGuestDetailsPopup, @EnableCashDrawer, @EnableKDSPrint, @SVCIdentification, @EnableCombo, @ShowLoyalty, @ShowRewardPoints, @ShowPromoCode, @EnableOnlinePayment, @EnableQROrderAutoPrint, GETDATE())
+          INSERT INTO AppSettings (UPI_ID, ShopName, PayNow_QR_Url, EnableKOT, EnableKDS, EnableCheckoutBill, EnableCheckoutFlow, EnableDirectProcessToPay, CustomerSideDisplay, EnableGuestDetailsPopup, EnableCashDrawer, EnableKDSPrint, SVCIdentification, EnableCombo, ShowLoyalty, ShowRewardPoints, ShowPromoCode, EnableOnlinePayment, EnableQROrderAutoPrint, EnableComboPrint, UpdatedOn)
+          VALUES (@UPI, @Shop, @QR, @EnableKOT, @EnableKDS, @EnableCheckoutBill, @EnableCheckoutFlow, @EnableDirectProcessToPay, @CustomerSideDisplay, @EnableGuestDetailsPopup, @EnableCashDrawer, @EnableKDSPrint, @SVCIdentification, @EnableCombo, @ShowLoyalty, @ShowRewardPoints, @ShowPromoCode, @EnableOnlinePayment, @EnableQROrderAutoPrint, @EnableComboPrint, GETDATE())
         END
       `);
 

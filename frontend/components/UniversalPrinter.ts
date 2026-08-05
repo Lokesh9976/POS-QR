@@ -2073,7 +2073,7 @@ class UniversalPrinter {
 
       // 2. Check enableKOT setting (same setting the cashier flow checks)
       const { useGeneralSettingsStore } = await import("../stores/generalSettingsStore");
-      const { enableKOT, enableKDSPrint } = useGeneralSettingsStore.getState().settings;
+      const { enableKOT, enableKDSPrint, enableComboPrint } = useGeneralSettingsStore.getState().settings;
       if (!isReprint && !enableKOT) {
         if (__DEV__) console.log("🖨️ [UniversalPrinter] KOT printing is disabled in General Settings.");
         return false;
@@ -2083,7 +2083,7 @@ class UniversalPrinter {
       const expandedItems: any[] = [];
       items.forEach((item: any) => {
         expandedItems.push(item);
-        if (item.comboSelections && item.comboSelections.length > 0) {
+        if (!enableComboPrint && item.comboSelections && item.comboSelections.length > 0) {
           item.comboSelections.forEach((g: any) => {
             if (Array.isArray(g.items)) {
               g.items.forEach((opt: any) => {
