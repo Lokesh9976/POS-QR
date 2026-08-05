@@ -358,7 +358,7 @@ async function syncToProfessionalTables(
       ELSE IF @Section = 3 SET @PriorityCode = 3
       ELSE IF @Section = 4 SET @PriorityCode = 4
 
-      // 🛡️ SHIELD: Find the DEFINITIVE active order for this table/number
+      -- 🛡️ SHIELD: Find the DEFINITIVE active order for this table/number
       SELECT TOP 1 OrderId, Tableno, BusinessUnitId, OrderNumber
       FROM RestaurantOrderCur WITH (UPDLOCK)
       WHERE OrderNumber = @orderNo 
@@ -809,7 +809,7 @@ async function syncTableStatus(req, tableId) {
     SELECT TOP 1 @ActualOrderId = OrderId, @ActualOrderNo = OrderNumber
     FROM RestaurantOrderCur 
     WHERE (OrderId = (SELECT TOP 1 OrderId FROM RestaurantOrderCur h2 WHERE h2.OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))) AND h2.isOrderClosed = 0))
-    OR ((Tableno = @TableNo OR Tableno = @tid) AND (isOrderClosed = 0 OR isOrderClosed IS NULL))
+    OR ((RTRIM(LTRIM(Tableno)) = RTRIM(LTRIM(@TableNo)) OR RTRIM(LTRIM(Tableno)) = RTRIM(LTRIM(@tid))) AND (isOrderClosed = 0 OR isOrderClosed IS NULL))
     ORDER BY CASE WHEN OrderNumber = (SELECT CurrentOrderId FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))) THEN 0 ELSE 1 END, CreatedOn DESC;
 
     DECLARE @TakeawayOverride INT = 0;
@@ -1285,7 +1285,7 @@ router.post("/send", async (req, res) => {
             FROM RestaurantOrderDetailCur d 
             JOIN RestaurantOrderCur h ON d.OrderId = h.OrderId 
             LEFT JOIN DishMaster dish ON d.DishId = dish.DishId
-            WHERE (h.OrderNumber = @orderNoCheck OR h.Tableno = @RealTableNo OR h.Tableno = @tableNoCheck)
+            WHERE (h.OrderNumber = @orderNoCheck OR RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(@RealTableNo)) OR RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(@tableNoCheck)))
               AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
               AND d.StatusCode <> 0
           `);
