@@ -1673,10 +1673,11 @@ export default function Category() {
         pointerEvents: "none",
       } : {
         paddingHorizontal: PADDING,
-        paddingVertical: 16,
+        paddingTop: 16,
+        paddingBottom: Math.max(insets.bottom + 24, 36),
         alignItems: "flex-start",
         justifyContent: "center",
-        marginTop: 10,
+        marginTop: 12,
       }}>
         <View style={{
           flexDirection: "row",
@@ -3667,7 +3668,7 @@ export default function Category() {
             </TouchableOpacity>
           </View>
         }
-        ListFooterComponent={!isTablet ? renderLicenseView(false) : null}
+        ListFooterComponent={renderLicenseView(false)}
       />
       {/* 〰〰〰〰〰〰〰〰〰〰〰 CUSTOMER GUEST & PAX MODAL 〰〰〰〰〰〰〰〰〰〰〰 */}
       <Modal
@@ -4635,8 +4636,6 @@ export default function Category() {
             </TouchableWithoutFeedback>
           </View>
         </TouchableWithoutFeedback>
-      </Modal>
-      {isTablet && renderLicenseView(true)}
     </SafeAreaView>
   );
 }
