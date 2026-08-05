@@ -14,39 +14,123 @@ async function sendWelcomeEmail({ email, name, phone, promoCode, promoAmount }) 
   try {
     const { transporter, from } = createMailTransporter();
     const htmlContent = `
-      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
-        <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #ff5e1a;">
-          <h1 style="color: #ff5e1a; margin: 0; font-size: 26px;">🎉 Welcome to Membership!</h1>
-          <p style="color: #666; font-size: 14px; margin-top: 5px;">Smart POS & QR Ordering</p>
-        </div>
-        <div style="padding: 20px 0;">
-          <h2 style="color: #333; font-size: 20px;">Hello ${name},</h2>
-          <p style="color: #555; font-size: 15px; line-height: 1.6;">
-            Thank you for registering as a member with us at your table! Your account has been successfully created and activated.
-          </p>
-          <div style="background-color: #f8fafc; border-left: 4px solid #ff5e1a; padding: 15px; border-radius: 6px; margin: 20px 0;">
-            <p style="margin: 5px 0; color: #333;"><strong>Member Name:</strong> ${name}</p>
-            <p style="margin: 5px 0; color: #333;"><strong>Registered Phone:</strong> ${phone}</p>
-            <p style="margin: 5px 0; color: #333;"><strong>Registered Email:</strong> ${email}</p>
-            ${promoCode ? `<p style="margin: 5px 0; color: #16a34a;"><strong>Promo Code Applied:</strong> ${promoCode} ($${promoAmount} Bonus Credit)</p>` : ''}
-          </div>
-          <p style="color: #555; font-size: 14px; line-height: 1.6;">
-            You can now enjoy table-side QR ordering, exclusive member perks, and instant receipts directly on your phone!
-          </p>
-        </div>
-        <div style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; color: #999; font-size: 12px;">
-          <p style="margin: 0;">© 2026 UNIPRO Smart POS System. All rights reserved.</p>
-        </div>
-      </div>
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Welcome to the VIP Club!</title>
+    </head>
+    <body style="margin:0; padding:0; background-color:#F1F5F9; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#F1F5F9; padding: 40px 10px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="100%" style="max-width:600px; background-color:#FFFFFF; border-radius:24px; overflow:hidden; box-shadow: 0 20px 40px rgba(255, 94, 26, 0.12);">
+              
+              <!-- 🚀 HERO BANNER -->
+              <tr>
+                <td style="background: linear-gradient(135deg, #FF5E1A 0%, #E04D10 100%); padding: 45px 30px; text-align: center; color: #FFFFFF;">
+                  <div style="font-size: 54px; line-height:1; margin-bottom: 15px;">🍕🔥🎁</div>
+                  <h1 style="margin: 0; font-size: 32px; font-weight: 900; letter-spacing: -0.5px; text-shadow: 0 2px 4px rgba(0,0,0,0.15);">WELCOME TO THE VIP CLUB!</h1>
+                  <p style="margin: 10px 0 0 0; font-size: 16px; font-weight: 600; opacity: 0.92; letter-spacing: 0.5px;">Your Table-Side Dining Experience Just Got Upgraded!</p>
+                </td>
+              </tr>
+
+              <!-- ✉️ BODY CONTENT -->
+              <tr>
+                <td style="padding: 35px 30px;">
+                  <h2 style="margin: 0 0 12px 0; color: #0F172A; font-size: 22px; font-weight: 800;">Hey ${name} 👋</h2>
+                  <p style="margin: 0 0 24px 0; color: #475569; font-size: 15px; line-height: 1.6; font-weight: 500;">
+                    Boom! You’re officially registered as an exclusive VIP Member with <strong>Smart POS & Table QR</strong>! Get ready for seamless table ordering, instant receipts, and secret member rewards!
+                  </p>
+
+                  <!-- 💳 MEMBER CARD -->
+                  <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); border-radius: 18px; padding: 24px; color: #FFFFFF; position: relative; margin-bottom: 28px; box-shadow: 0 10px 25px rgba(15, 23, 42, 0.25);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 12px; margin-bottom: 16px;">
+                      <span style="font-size: 12px; font-weight: 800; color: #FF5E1A; letter-spacing: 1.5px; text-transform: uppercase;">OFFICIAL MEMBER PASS</span>
+                      <span style="font-size: 12px; font-weight: 700; color: #94A3B8;">SMART POS VIP</span>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                      <div style="font-size: 11px; color: #94A3B8; font-weight: 600; text-transform: uppercase;">Member Name</div>
+                      <div style="font-size: 18px; font-weight: 800; color: #FFFFFF; margin-top: 2px;">${name}</div>
+                    </div>
+
+                    <div style="display: flex; gap: 20px; margin-bottom: 12px;">
+                      <div style="flex: 1;">
+                        <div style="font-size: 11px; color: #94A3B8; font-weight: 600; text-transform: uppercase;">Mobile Number</div>
+                        <div style="font-size: 14px; font-weight: 700; color: #E2E8F0; margin-top: 2px;">${phone}</div>
+                      </div>
+                      <div style="flex: 1;">
+                        <div style="font-size: 11px; color: #94A3B8; font-weight: 600; text-transform: uppercase;">Email ID</div>
+                        <div style="font-size: 14px; font-weight: 700; color: #E2E8F0; margin-top: 2px;">${email}</div>
+                      </div>
+                    </div>
+
+                    ${promoCode ? `
+                    <div style="background: rgba(34, 197, 94, 0.15); border: 1px dashed #22C55E; border-radius: 12px; padding: 12px; margin-top: 14px; text-align: center;">
+                      <span style="font-size: 13px; color: #4ADE80; font-weight: 800;">🎁 WELCOME BONUS ADDED:</span>
+                      <div style="font-size: 16px; color: #FFFFFF; font-weight: 900; margin-top: 2px;">${promoCode} — $${promoAmount} Free Credit Added to Wallet!</div>
+                    </div>
+                    ` : ''}
+                  </div>
+
+                  <!-- ⭐ PERKS LIST -->
+                  <h3 style="margin: 0 0 16px 0; color: #0F172A; font-size: 17px; font-weight: 800;">🔥 YOUR VIP PERKS INCLUDE:</h3>
+                  
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 28px;">
+                    <tr>
+                      <td width="36" valign="top" style="font-size: 20px;">⚡</td>
+                      <td style="padding-bottom: 14px; color: #334155; font-size: 14px; font-weight: 600; line-height: 1.4;">
+                        <strong>Lightning Fast Table QR Ordering</strong> — Skip the wait lines and order directly from your smartphone!
+                      </td>
+                    </tr>
+                    <tr>
+                      <td width="36" valign="top" style="font-size: 20px;">💳</td>
+                      <td style="padding-bottom: 14px; color: #334155; font-size: 14px; font-weight: 600; line-height: 1.4;">
+                        <strong>Instant E-Receipts</strong> — Track all your orders and bills seamlessly in real-time.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td width="36" valign="top" style="font-size: 20px;">🎉</td>
+                      <td style="color: #334155; font-size: 14px; font-weight: 600; line-height: 1.4;">
+                        <strong>Member Discounts & Promos</strong> — Receive secret promo drops, birthday rewards, and cashback!
+                      </td>
+                    </tr>
+                  </table>
+
+                  <!-- 📲 CALL TO ACTION BUTTON -->
+                  <div style="text-align: center; margin: 35px 0 15px 0;">
+                    <a href="http://localhost:8081/customer" style="background-color: #FF5E1A; color: #FFFFFF; text-decoration: none; padding: 16px 36px; border-radius: 30px; font-weight: 800; font-size: 16px; display: inline-block; box-shadow: 0 8px 20px rgba(255, 94, 26, 0.35); letter-spacing: 0.3px;">START ORDERING NOW ➔</a>
+                  </div>
+
+                </td>
+              </tr>
+
+              <!-- 🛡️ FOOTER -->
+              <tr>
+                <td style="background-color: #F8FAFC; padding: 24px 30px; text-align: center; border-top: 1px solid #E2E8F0; color: #94A3B8; font-size: 12px;">
+                  <p style="margin: 0 0 6px 0; font-weight: 700; color: #64748B;">Smart POS & Digital QR Dining System</p>
+                  <p style="margin: 0; font-weight: 500;">You received this email because you registered as a member at our table QR portal.</p>
+                  <p style="margin: 10px 0 0 0; font-size: 11px;">© 2026 UNIPRO. All rights reserved.</p>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
     `;
 
     await transporter.sendMail({
-      from: `"Smart POS" <${from}>`,
+      from: `"Smart POS VIP" <${from}>`,
       to: email,
-      subject: `Welcome to Smart POS, ${name}! Your Membership is Confirmed 🎉`,
+      subject: `🔥 WELCOME TO THE VIP CLUB, ${name.toUpperCase()}! Your Member Pass is Ready 🍕`,
       html: htmlContent,
     });
-    console.log(`✉️ [Mail] Welcome email sent to new member: ${email}`);
+    console.log(`✉️ [Mail] Mass VIP Welcome email sent to new member: ${email}`);
   } catch (err) {
     console.warn(`⚠️ [Mail] Could not send welcome email to ${email}:`, err.message);
   }
