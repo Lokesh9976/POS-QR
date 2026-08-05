@@ -430,13 +430,9 @@ private static escapeHtml(str: string): string {
         .map((item: any) => {
           const qtyNum = item.qty || item.quantity || 1;
           const modifiersHTML = (item.modifiers && Array.isArray(item.modifiers))
-            ? item.modifiers.filter((m: any) => {
-                const mAmt = parseFloat(String(m.Amount ?? m.Price ?? m.amount ?? m.price ?? 0)) || 0;
-                return mAmt > 0;
-              }).map((m: any) => {
+            ? item.modifiers.map((m: any) => {
                 const mName = (m.ModifierName || m.name || "").trim();
-                const mAmt = parseFloat(String(m.Amount ?? m.Price ?? m.amount ?? m.price ?? 0)) || 0;
-                return `<div class="item-modifiers">+ ${mName}: ${currencySymbol}${(mAmt * qtyNum).toFixed(2)}</div>`;
+                return `<div class="item-modifiers">+ ${mName}</div>`;
               }).join('')
             : '';
 

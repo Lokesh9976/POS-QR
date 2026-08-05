@@ -417,6 +417,7 @@ export default function Category() {
   const router = useRouter();
   const { showToast } = useToast();
   const { section: urlSection } = useLocalSearchParams<{ section?: string }>();
+  const isWindows = Platform.OS === "windows" || (Platform.OS === "web" && typeof navigator !== "undefined" && /win/i.test(navigator.platform || navigator.userAgent));
 
   const [activeTab, setActiveTab] = useState<string>("SECTION_1");
   const [allTables, setAllTables] = useState<TableItem[]>([]);
@@ -3650,7 +3651,7 @@ export default function Category() {
         contentContainerStyle={{
           gap: GAP,
           paddingHorizontal: PADDING,
-          paddingBottom: isTablet ? 160 : 40,
+          paddingBottom: isWindows ? 40 : (isTablet ? 160 : 40),
           paddingTop: 8,
         }}
         showsVerticalScrollIndicator={false}
@@ -3668,7 +3669,7 @@ export default function Category() {
             </TouchableOpacity>
           </View>
         }
-        ListFooterComponent={renderLicenseView(false)}
+        ListFooterComponent={!isWindows ? renderLicenseView(false) : null}
       />
       {/* 〰〰〰〰〰〰〰〰〰〰〰 CUSTOMER GUEST & PAX MODAL 〰〰〰〰〰〰〰〰〰〰〰 */}
       <Modal
@@ -4637,6 +4638,8 @@ export default function Category() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      {isWindows && renderLicenseView(true)}
     </SafeAreaView>
   );
 }

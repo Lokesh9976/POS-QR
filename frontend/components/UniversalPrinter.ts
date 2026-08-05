@@ -1143,166 +1143,167 @@ class UniversalPrinter {
   }
 
   private static formatKOTThermalText(data: any, type: string): string {
+    // ── Type title ────────────────────────────────────────────────────
     const title =
-      type === "KDS_PRINT"
-        ? "KDS PRINT"
-        : type === "REPRINT"
-          ? "REPRINT"
-          : type === "ADDITIONAL"
-            ? "ADDITIONAL"
-            : "NEW ORDER";
-    const items = (data.items || []).filter((item: any) => (item.status || item.Status || "").toUpperCase() !== "VOIDED");
-    const tableNo = data.tableNo || "N/A";
-    const waiter = data.waiterName || "Staff";
-    const orderNo = data.orderNo || data.orderId || "";
+      type === "KDS_PRINT"    ? "KDS PRINT"
+      : type === "REPRINT"    ? "REPRINT"
+      : type === "ADDITIONAL" ? "ADDITIONAL ORDER"
+      : "NEW ORDER";
+
+    const items       = (data.items || []).filter((item: any) => (item.status || item.Status || "").toUpperCase() !== "VOIDED");
+    const tableNo     = data.tableNo    || "N/A";
+    const waiter      = data.waiterName || "Staff";
+    const orderNo     = data.orderNo    || data.orderId || "";
     const kitchenName = data.kitchenName || "";
 
-    let text = `[C]<B>${title}</B>\n`;
-    const kotDateStr = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Singapore', day: '2-digit', month: '2-digit', year: '2-digit' }).format(new Date());
-    const kotTimeStr = formatToSingaporeTime(new Date(), { hour: '2-digit', minute: '2-digit', hour12: false });
-    text += `[C]${kotDateStr} ${kotTimeStr}\n`;
-    text += "[L]--------------------------------\n";
+    // ── Word-wrap helper ──────────────────────────────────────────────
+    const wrapText = (str: string, maxChars: number): string[] => {
+      const words = String(str || "").split(" ");
+      const result: string[] = [];
+      let current = "";
+      for (const word of words) {
+        if (!word) continue;
+        if (!current) { current = word; }
+        else if ((current + " " + word).length <= maxChars) { current += " " + word; }
+        else { result.push(current); current = word; }
+      }
+      if (current) result.push(current);
+      return result.length ? result : [""];
+    };
+    // Width reference (80mm paper):
+    //   Normal font : 48 chars/line
+    //   Big font    : 24 chars/line
+    //   Item prefix : "[qty] " = 5 chars  → 19 chars for name (big font)
+    //   Mod prefix  : "  + "  = 4 chars  → 44 chars for mod  (normal font)
+    const BIG_NAME = 19;   // big-font chars available after "[qty] "
+    const MOD_WRAP = 44;   // normal-font chars for modifiers/combos
 
-    // 🏠 Big centered table number (only for non-KDS KOTs)
+    // ── Timestamp ─────────────────────────────────────────────────────
+    const kotDateStr = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Singapore", day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date());
+    const kotTimeStr = formatToSingaporeTime(new Date(), { hour: "2-digit", minute: "2-digit", hour12: false });
+
+    const DIV = "[L]------------------------------------------------\n";
+
+    // ── Helper: format one item ───────────────────────────────────────
+    const formatItem = (item: any): string => {
+      let t = "";
+      const qtyNum   = item.quantity || item.qty || 1;
+      const itemName = item.name || item.DishName || "";
+
+      // Item name: big + bold, wrap only when needed
+      wrapText(itemName.replace(/\n/g, " "), BIG_NAME).forEach((chunk: string, idx: number) => {
+        if (idx === 0) t += `[L]<font size='big'><B>[${qtyNum}] ${chunk}</B></font>\n`;
+        else           t += `[L]<font size='big'><B>    ${chunk}</B></font>\n`;
+      });
+
+      // Song name
+      const songName = item.songName || item.SongName || "";
+      if (songName) t += `[L]  ♪ ${songName}\n`;
+
+      // Takeaway flag
+      const isTw = !!(item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway);
+      if (isTw) t += `[L]  >> TAKEAWAY <<\n`;
+
+      // Modifiers: normal font (not big), wraps at 44 chars
+      if (item.modifiers && item.modifiers.length > 0) {
+        item.modifiers.forEach((m: any) => {
+          const modName = m.ModifierName || m.name || "";
+          if (modName) {
+            wrapText(modName, MOD_WRAP).forEach((chunk: string, idx: number) => {
+              t += idx === 0 ? `[L]  + ${chunk}\n` : `[L]    ${chunk}\n`;
+            });
+          }
+        });
+      }
+
+      // Combo selections: normal font, wrap at 44 chars
+      if (item.comboSelections && item.comboSelections.length > 0) {
+        item.comboSelections.forEach((g: any) => {
+          g.items?.forEach((opt: any) => {
+            wrapText(opt.name || "", MOD_WRAP).forEach((chunk: string, idx: number) => {
+              t += idx === 0 ? `[L]  - ${chunk}\n` : `[L]    ${chunk}\n`;
+            });
+          });
+        });
+      }
+
+      // Note / Remarks: normal font, wrap at 44 chars
+      const noteText = item.note || item.notes || item.Remarks || item.remarks;
+      if (noteText) {
+        wrapText(noteText, MOD_WRAP).forEach((chunk: string, idx: number) => {
+          t += idx === 0 ? `[L]  * ${chunk}\n` : `[L]    ${chunk}\n`;
+        });
+      }
+
+      return t;
+    };
+
+    // ── HEADER ────────────────────────────────────────────────────────
+    let text = "\n\n";
+    text += `[C]<B>${title}</B>\n`;
+    text += `[C]${kotDateStr}  ${kotTimeStr}\n`;
+    text += DIV;
+
     if (type !== "KDS_PRINT") {
-      text += `[C]<font size='big'>TABLE: ${tableNo}</font>\n`;
-      text += "[L]--------------------------------\n";
+      // KOT: TABLE bold large at the TOP
+      text += `[C]<font size='big'><B>TABLE : ${tableNo}</B></font>\n`;
+      text += DIV;
     }
 
     text += "[L]QTY  ITEM\n";
-    text += "[L]--------------------------------\n";
+    text += DIV;
 
+    // ── ITEMS ─────────────────────────────────────────────────────────
     if (type === "KDS_PRINT") {
-      const kitchenGroups: Record<string, any[]> = {};
+      // KDS: group by kitchen section
+      const groups: Record<string, any[]> = {};
       items.forEach((item: any) => {
-        const kName = (item.KitchenTypeName || item.kitchenTypeName || item.dishGroupName || item.categoryName || "KITCHEN").toUpperCase().trim();
-        if (!kitchenGroups[kName]) kitchenGroups[kName] = [];
-        kitchenGroups[kName].push(item);
+        const k = (item.KitchenTypeName || item.kitchenTypeName || item.dishGroupName || item.categoryName || "KITCHEN").toUpperCase().trim();
+        if (!groups[k]) groups[k] = [];
+        groups[k].push(item);
       });
 
-      for (const [kName, groupItems] of Object.entries(kitchenGroups)) {
-        text += `\n[L]<B>${kName}</B>\n`;
-        text += "[L]--------------------------------\n";
-        
-        groupItems.forEach((item: any) => {
-          const qtyNum = item.quantity || item.qty || 1;
-          const itemName = item.name || item.DishName || "";
-          const lines = itemName.split("\n");
-          lines.forEach((line: string, idx: number) => {
-            if (idx === 0) {
-              text += `[L]<font size='big'>[${qtyNum}] ${line}</font>\n`;
-            } else {
-              text += `[L]<font size='big'>    ${line}</font>\n`;
-            }
-          });
-
-          const songName = item.songName || item.SongName || "";
-          if (songName) {
-            text += `[L]    🎵 ${songName}\n`;
-          }
-
-          const isTw = !!(
-            item.isTakeaway ||
-            item.IsTakeaway ||
-            item.isTakeAway ||
-            item.IsTakeAway
-          );
-          if (isTw) {
-            text += `[L]    <B>- Takeaway</B>\n`;
-          }
-
-          if (item.modifiers && item.modifiers.length > 0) {
-            item.modifiers.forEach((m: any) => {
-              const modName = m.ModifierName || m.name || "";
-              const formattedMod = modName.split(' ').filter(Boolean).join('  ');
-              text += `[L]    <font size='big'><B>+   ${formattedMod}</B></font>\n`;
-            });
-          }
-
-          if (item.comboSelections && item.comboSelections.length > 0) {
-            item.comboSelections.forEach((g: any) => {
-              g.items?.forEach((opt: any) => {
-                const formattedCombo = opt.name.split(' ').filter(Boolean).join('  ');
-                text += `[L]    <font size='big'><B>-   ${formattedCombo}</B></font>\n`;
-              });
-            });
-          }
-
-          const noteText = item.note || item.notes || item.Remarks || item.remarks;
-          if (noteText) {
-            text += `[L]    * NOTE: ${noteText}\n`;
-          }
+      for (const [kName, groupItems] of Object.entries(groups)) {
+        text += `[C]<B>${kName}</B>\n`;
+        text += DIV;
+        groupItems.forEach((item: any, idx: number) => {
+          text += formatItem(item);
+          if (idx < groupItems.length - 1) text += "[L]\n"; // blank line between items
         });
-        
-        text += "[L]--------------------------------\n";
+        text += DIV;
       }
     } else {
-      items.forEach((item: any) => {
-        const qtyNum = item.quantity || item.qty || 1;
-        const itemName = item.name || item.DishName || "";
-        const lines = itemName.split("\n");
-        lines.forEach((line: string, idx: number) => {
-          if (idx === 0) {
-            text += `[L]<font size='big'>[${qtyNum}] ${line}</font>\n`;
-          } else {
-            text += `[L]<font size='big'>    ${line}</font>\n`;
-          }
-        });
-
-        const songName = item.songName || item.SongName || "";
-        if (songName) {
-          text += `[L]    🎵 ${songName}\n`;
-        }
-
-        const isTw = !!(
-          item.isTakeaway ||
-          item.IsTakeaway ||
-          item.isTakeAway ||
-          item.IsTakeAway
-        );
-        if (isTw) {
-          text += `[L]    <B>- Takeaway</B>\n`;
-        }
-
-        if (item.modifiers && item.modifiers.length > 0) {
-          item.modifiers.forEach((m: any) => {
-            const modName = m.ModifierName || m.name || "";
-            const formattedMod = modName.split(' ').filter(Boolean).join('  ');
-            text += `[L]    <font size='big'><B>+   ${formattedMod}</B></font>\n`;
-          });
-        }
-
-        if (item.comboSelections && item.comboSelections.length > 0) {
-          item.comboSelections.forEach((g: any) => {
-            g.items?.forEach((opt: any) => {
-              const formattedCombo = opt.name.split(' ').filter(Boolean).join('  ');
-              text += `[L]    <font size='big'><B>-   ${formattedCombo}</B></font>\n`;
-            });
-          });
-        }
-
-        const noteText = item.note || item.notes || item.Remarks || item.remarks;
-        if (noteText) {
-          text += `[L]    * NOTE: ${noteText}\n`;
-        }
-
-        text += "[L]--------------------------------\n";
+      // KOT: flat list
+      items.forEach((item: any, idx: number) => {
+        text += formatItem(item);
+        if (idx < items.length - 1) text += "[L]\n"; // blank line between items
       });
+      text += DIV;
     }
 
-    text += `[L]Order By: ${waiter}\n`;
-    text += `[L]Order #: ${orderNo}\n`;
+    // ── FOOTER ────────────────────────────────────────────────────────
+    text += `[L]Order By : ${waiter}\n`;
+    text += `[L]Order No : ${orderNo}\n`;
+
     if (type === "KDS_PRINT") {
-      text += "[L]--------------------------------\n";
+      // KDS: TABLE NUMBER big at the BOTTOM
+      text += DIV;
       text += `[C]<font size='big'><B>TABLE NO : ${tableNo}</B></font>\n`;
-      text += "[L]--------------------------------\n";
-    }
-
-    if (kitchenName && kitchenName !== "KDS") {
-      const bottomLabel = tableNo && tableNo !== "N/A" ? `${kitchenName.toUpperCase()}  /  T.NO: ${tableNo}` : kitchenName.toUpperCase();
-      text += "[L]--------------------------------\n";
-      text += `[C]<font size='big'><B>${bottomLabel}</B></font>\n`;
-      text += "[L]--------------------------------\n";
+      text += DIV;
+    } else {
+      // KOT: Kitchen Name + Table Number always at the very bottom
+      const kotLabel = kitchenName && kitchenName !== "KDS"
+        ? (tableNo && tableNo !== "N/A"
+            ? `${kitchenName.toUpperCase()}  /  T.NO : ${tableNo}`
+            : kitchenName.toUpperCase())
+        : (tableNo && tableNo !== "N/A"
+            ? `T.NO : ${tableNo}`
+            : "");
+      if (kotLabel) {
+        text += DIV;
+        text += `[C]<font size='big'><B>${kotLabel}</B></font>\n`;
+        text += DIV;
+      }
     }
 
     text += "\n\n";
@@ -1724,15 +1725,12 @@ class UniversalPrinter {
         text += `[L]   ${item.name}\n`;
       }
 
-      // Modifiers with positive pricing
+      // Modifiers
       if (item.modifiers && Array.isArray(item.modifiers)) {
         item.modifiers.forEach((m: any) => {
           const mName = (m.ModifierName || m.name || "").trim();
-          const mAmt = parseFloat(String(m.Amount ?? m.Price ?? m.amount ?? m.price ?? 0)) || 0;
-          if (mAmt > 0) {
-            const leftStr = `   + ${mName}`;
-            const rightStr = `${symbol}${(mAmt * qtyNum).toFixed(2)}`;
-            text += this.formatTwoCols48(leftStr, rightStr);
+          if (mName) {
+            text += `[L]   + ${mName}\n`;
           }
         });
       }

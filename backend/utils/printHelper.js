@@ -12,82 +12,93 @@
  * @returns {string} ESC/POS formatted text
  */
 function formatKOTThermalText(data, type = 'NEW') {
+  // ── Type title ──────────────────────────────────────────────────────
   const title =
-    type === 'KDS_PRINT' ? 'KDS PRINT'
-    : type === 'REPRINT'  ? 'REPRINT'
-    : type === 'ADDITIONAL' ? 'ADDITIONAL'
+    type === 'KDS_PRINT'    ? 'KDS PRINT'
+    : type === 'REPRINT'    ? 'REPRINT'
+    : type === 'ADDITIONAL' ? 'ADDITIONAL ORDER'
     : 'NEW ORDER';
 
-  const items      = data.items       || [];
-  const tableNo    = data.tableNo     || 'N/A';
-  const waiter     = data.waiterName  || 'Staff';
-  const orderNo    = data.orderNo     || data.orderId || '';
+  const items       = (data.items || []).filter(i => (i.status || i.Status || '').toUpperCase() !== 'VOIDED');
+  const tableNo     = data.tableNo     || 'N/A';
+  const waiter      = data.waiterName  || 'Staff';
+  const orderNo     = data.orderNo     || data.orderId || '';
   const kitchenName = data.kitchenName || '';
 
-  // Singapore time
+  // ── Timestamp ───────────────────────────────────────────────────────
   const now = new Date();
-  const sgOptions = { timeZone: 'Asia/Singapore' };
-  const kotDateStr = new Intl.DateTimeFormat('en-GB', {
-    ...sgOptions, day: '2-digit', month: '2-digit', year: '2-digit'
-  }).format(now);
-  const kotTimeStr = now.toLocaleTimeString('en-GB', {
-    ...sgOptions, hour: '2-digit', minute: '2-digit', hour12: false
-  });
+  const sg  = { timeZone: 'Asia/Singapore' };
+  const dateStr = new Intl.DateTimeFormat('en-GB', { ...sg, day:'2-digit', month:'2-digit', year:'2-digit' }).format(now);
+  const timeStr = now.toLocaleTimeString('en-GB', { ...sg, hour:'2-digit', minute:'2-digit', hour12:false });
 
-  let text = `[C]<B>${title}</B>\n`;
-  text += `[C]${kotDateStr} ${kotTimeStr}\n`;
-  text += '[L]--------------------------------\n';
-  
+  const DIV = '[L]------------------------------------------------\n';
+
+  // ── HEADER ──────────────────────────────────────────────────────────
+  let text = '\n\n';
+  text += `[C]<B>${title}</B>\n`;
+  text += `[C]${dateStr}  ${timeStr}\n`;
+  text += DIV;
+
   if (type !== 'KDS_PRINT') {
-    text += `[C]<font size='big'>TABLE: ${tableNo}</font>\n`;
-    text += '[L]--------------------------------\n';
+    // KOT: TABLE visible at top
+    text += `[C]<font size='big'><B>TABLE : ${tableNo}</B></font>\n`;
+    text += DIV;
   }
 
   text += '[L]QTY  ITEM\n';
-  text += '[L]--------------------------------\n';
+  text += DIV;
 
-  // KDS groups all items by kitchen name
+  // ── ITEMS ───────────────────────────────────────────────────────────
   if (type === 'KDS_PRINT') {
-    const kitchenGroups = {};
+    // KDS: group by kitchen section
+    const groups = {};
     items.forEach(item => {
-      const kName = (
-        item.KitchenTypeName || item.kitchenTypeName ||
-        item.dishGroupName   || item.categoryName    || 'KITCHEN'
-      ).toUpperCase().trim();
-      if (!kitchenGroups[kName]) kitchenGroups[kName] = [];
-      kitchenGroups[kName].push(item);
+      const k = (item.KitchenTypeName || item.kitchenTypeName || item.dishGroupName || item.categoryName || 'KITCHEN').toUpperCase().trim();
+      if (!groups[k]) groups[k] = [];
+      groups[k].push(item);
     });
 
-    for (const [kName, groupItems] of Object.entries(kitchenGroups)) {
-      text += `\n[L]<B>${kName}</B>\n`;
-      text += '[L]--------------------------------\n';
-      groupItems.forEach(item => {
+    for (const [kName, groupItems] of Object.entries(groups)) {
+      text += `[C]<B>${kName}</B>\n`;
+      text += DIV;
+      groupItems.forEach((item, idx) => {
         text += _formatItem(item);
+        if (idx < groupItems.length - 1) text += '[L]\n';
       });
+      text += DIV;
     }
   } else {
-    // KOT: items already belong to one kitchen group
-    items.forEach(item => {
+    // KOT: flat list
+    items.forEach((item, idx) => {
       text += _formatItem(item);
+      if (idx < items.length - 1) text += '[L]\n';
     });
+    text += DIV;
   }
 
-  text += `[L]Order By: ${waiter}\n`;
-  text += `[L]Order #: ${orderNo}\n`;
-  
+  // ── FOOTER ──────────────────────────────────────────────────────────
+  text += `[L]Order By : ${waiter}\n`;
+  text += `[L]Order No : ${orderNo}\n`;
+
   if (type === 'KDS_PRINT') {
-    text += '[L]--------------------------------\n';
+    // KDS: TABLE big at the bottom
+    text += DIV;
     text += `[C]<font size='big'><B>TABLE NO : ${tableNo}</B></font>\n`;
-    text += '[L]--------------------------------\n';
-  }
-
-  if (kitchenName && kitchenName !== 'KDS') {
-    const bottomLabel = tableNo && tableNo !== 'N/A'
-      ? `${kitchenName.toUpperCase()}  /  T.NO: ${tableNo}`
-      : kitchenName.toUpperCase();
-    text += '[L]--------------------------------\n';
-    text += `[C]<font size='big'><B>${bottomLabel}</B></font>\n`;
-    text += '[L]--------------------------------\n';
+    text += DIV;
+  } else {
+    // KOT: Kitchen Name + Table Number always at the very bottom
+    const kotLabel = kitchenName && kitchenName !== 'KDS'
+      ? (tableNo && tableNo !== 'N/A'
+          ? `${kitchenName.toUpperCase()}  /  T.NO : ${tableNo}`
+          : kitchenName.toUpperCase())
+      : (tableNo && tableNo !== 'N/A'
+          ? `T.NO : ${tableNo}`
+          : '');
+    if (kotLabel) {
+      text += DIV;
+      text += `[C]<font size='big'><B>${kotLabel}</B></font>\n`;
+      text += DIV;
+    }
   }
 
   text += '\n\n';
@@ -95,53 +106,100 @@ function formatKOTThermalText(data, type = 'NEW') {
 }
 
 /**
+ * Word-wrap a string to fit within `maxChars` per line.
+ * Returns an array of lines. Only wraps when truly needed.
+ */
+function _wrapText(str, maxChars) {
+  const words = String(str || '').split(' ');
+  const result = [];
+  let current = '';
+  for (const word of words) {
+    if (!word) continue;
+    if (!current) {
+      current = word;
+    } else if ((current + ' ' + word).length <= maxChars) {
+      current += ' ' + word;
+    } else {
+      result.push(current);
+      current = word;
+    }
+  }
+  if (current) result.push(current);
+  return result.length ? result : [''];
+}
+
+/**
  * Format a single item row for ESC/POS output.
+ *
+ * Width reference (80mm paper):
+ *   Normal font : 48 chars/line
+ *   Big font    : 24 chars/line
+ *   Item prefix : "[qty] " = 5 chars  → 19 chars for name (big font)
+ *   Mod prefix  : "  + "  = 4 chars  → 44 chars for mod  (normal font)
  */
 function _formatItem(item) {
   let text = '';
   const qtyNum   = item.quantity || item.qty || 1;
   const itemName = item.name     || item.DishName || '';
-  const lines    = itemName.split('\n');
 
-  lines.forEach((line, idx) => {
+  // ── Item name: big + bold, wrap at 19 chars (big-font width minus prefix) ──
+  const BIG_NAME = 19;   // big-font chars available after "[qty] "
+  const BIG_CONT = 20;   // big-font chars available on continuation lines (4-space indent)
+  const MOD_WRAP = 44;   // normal-font chars available for modifiers
+
+  _wrapText(itemName.replace(/\n/g, ' '), BIG_NAME).forEach((chunk, idx) => {
     if (idx === 0) {
-      text += `[L]<font size='big'>[${qtyNum}] ${line}</font>\n`;
+      text += `[L]<font size='big'><B>[${qtyNum}] ${chunk}</B></font>\n`;
     } else {
-      text += `[L]<font size='big'>    ${line}</font>\n`;
+      text += `[L]<font size='big'><B>    ${chunk}</B></font>\n`;
     }
   });
 
+  // ── Song name ──────────────────────────────────────────────────────────────
   const songName = item.songName || item.SongName || '';
-  if (songName) text += `[L]    🎵 ${songName}\n`;
+  if (songName) text += `[L]    ♪ ${songName}\n`;
 
+  // ── Takeaway flag ──────────────────────────────────────────────────────────
   const isTakeaway = !!(item.isTakeaway || item.IsTakeaway || item.isTakeAway || item.IsTakeAway);
-  if (isTakeaway) text += `[L]    <B>- Takeaway</B>\n`;
+  if (isTakeaway) text += `[L]    >> TAKEAWAY <<\n`;
 
+  // ── Modifiers (normal font, no big) — wrap at 44 chars ────────────────────
   if (item.modifiers && item.modifiers.length > 0) {
     item.modifiers.forEach(m => {
-      const modName = m.ModifierName || m.modifierName || m.name || m.ModifierNameEn || "";
+      const modName = m.ModifierName || m.modifierName || m.name || m.ModifierNameEn || '';
       if (modName) {
-        const formattedMod = modName.split(' ').filter(Boolean).join('  ');
-        text += `[L]      <font size='big'><B>+   ${formattedMod}</B></font>\n`;
-      }
-    });
-  }
-
-  if (item.comboSelections && item.comboSelections.length > 0) {
-    item.comboSelections.forEach(g => {
-      if (Array.isArray(g.items)) {
-        g.items.forEach(opt => {
-          const formattedCombo = opt.name.split(' ').filter(Boolean).join('  ');
-          text += `[L]      <font size='big'><B>-   ${formattedCombo}</B></font>\n`;
+        _wrapText(modName, MOD_WRAP).forEach((chunk, idx) => {
+          text += idx === 0
+            ? `[L]  + ${chunk}\n`
+            : `[L]    ${chunk}\n`;
         });
       }
     });
   }
 
-  const noteText = item.note || item.notes || item.Remarks || item.remarks;
-  if (noteText) text += `[L]    * NOTE: ${noteText}\n`;
+  // ── Combo selections (normal font) — wrap at 44 chars ─────────────────────
+  if (item.comboSelections && item.comboSelections.length > 0) {
+    item.comboSelections.forEach(g => {
+      if (Array.isArray(g.items)) {
+        g.items.forEach(opt => {
+          _wrapText(opt.name || '', MOD_WRAP).forEach((chunk, idx) => {
+            text += idx === 0
+              ? `[L]  - ${chunk}\n`
+              : `[L]    ${chunk}\n`;
+          });
+        });
+      }
+    });
+  }
 
-  text += '[L]--------------------------------\n';
+  // ── Remarks / Note ─────────────────────────────────────────────────────────
+  const noteText = item.note || item.notes || item.Remarks || item.remarks;
+  if (noteText) {
+    _wrapText(noteText, 44).forEach((chunk, idx) => {
+      text += idx === 0 ? `[L]  * ${chunk}\n` : `[L]    ${chunk}\n`;
+    });
+  }
+
   return text;
 }
 
