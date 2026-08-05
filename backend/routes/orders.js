@@ -227,7 +227,7 @@ async function getOrGenerateOrderId(req, tableId) {
           .query(`
             SELECT TOP 1 h.OrderNumber
             FROM RestaurantOrderCur h
-            WHERE (h.Tableno = @tableNoCheck OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableId = @tableNoCheck))
+            WHERE (h.Tableno = @tableNoCheck OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tableNoCheck OR (TRY_CAST(@tableNoCheck AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tableNoCheck AS UNIQUEIDENTIFIER))))
               AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
               AND h.OrderNumber IS NOT NULL
               AND h.OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '')
@@ -1163,7 +1163,7 @@ router.post("/send", async (req, res) => {
         .input('tidForCheck', sql.VarChar(50), cleanId)
         .query(`
           DECLARE @TableNoCheck VARCHAR(20);
-          SELECT TOP 1 @TableNoCheck = TableNumber FROM TableMaster WHERE TableId = @tidForCheck;
+          SELECT TOP 1 @TableNoCheck = TableNumber FROM TableMaster WHERE TableNumber = @tidForCheck OR (TRY_CAST(@tidForCheck AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tidForCheck AS UNIQUEIDENTIFIER));
 
           SELECT COUNT(*) AS SentCount
           FROM RestaurantOrderDetailCur d
@@ -1207,7 +1207,7 @@ router.post("/send", async (req, res) => {
               SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
               FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
             ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
-            WHERE (h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableId = @tableNo OR TableNumber = @tableNo)
+            WHERE (h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tableNo OR (TRY_CAST(@tableNo AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tableNo AS UNIQUEIDENTIFIER)))
               OR h.Tableno = @tableNo) 
               AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL) 
               AND d.StatusCode <> 0`);
