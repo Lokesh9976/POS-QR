@@ -213,7 +213,7 @@ async function getOrGenerateOrderId(req, tableId) {
           .query(`
             SELECT TOP 1 h.OrderNumber
             FROM RestaurantOrderCur h
-            JOIN TableMaster tm ON h.Tableno = tm.TableNumber
+            JOIN TableMaster tm ON RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(tm.TableNumber))
             WHERE tm.TableId = @tidForCheck
               AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
               AND h.OrderNumber IS NOT NULL
@@ -227,7 +227,7 @@ async function getOrGenerateOrderId(req, tableId) {
           .query(`
             SELECT TOP 1 h.OrderNumber
             FROM RestaurantOrderCur h
-            WHERE (h.Tableno = @tableNoCheck OR h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tableNoCheck OR (TRY_CAST(@tableNoCheck AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tableNoCheck AS UNIQUEIDENTIFIER))))
+            WHERE (RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(@tableNoCheck)) OR RTRIM(LTRIM(h.Tableno)) = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tableNoCheck OR (TRY_CAST(@tableNoCheck AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tableNoCheck AS UNIQUEIDENTIFIER))))
               AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
               AND h.OrderNumber IS NOT NULL
               AND h.OrderNumber NOT IN ('PENDING', 'NEW', '#NEW', '')
@@ -358,11 +358,11 @@ async function syncToProfessionalTables(
       ELSE IF @Section = 3 SET @PriorityCode = 3
       ELSE IF @Section = 4 SET @PriorityCode = 4
 
-      -- 🛡️ SHIELD: Find the DEFINITIVE active order for this table/number
+      // 🛡️ SHIELD: Find the DEFINITIVE active order for this table/number
       SELECT TOP 1 OrderId, Tableno, BusinessUnitId, OrderNumber
       FROM RestaurantOrderCur WITH (UPDLOCK)
       WHERE OrderNumber = @orderNo 
-      OR (Tableno = @ActualTableNo AND (isOrderClosed = 0 OR isOrderClosed IS NULL)) 
+      OR (RTRIM(LTRIM(Tableno)) = RTRIM(LTRIM(@ActualTableNo)) AND (isOrderClosed = 0 OR isOrderClosed IS NULL)) 
       ORDER BY 
         CASE WHEN OrderNumber = @orderNo THEN 0 ELSE 1 END,
         CreatedOn DESC;
@@ -453,7 +453,7 @@ async function syncToProfessionalTables(
       .query(`
         SELECT OrderId, OrderNumber
         FROM RestaurantOrderCur
-        WHERE Tableno = @tableNo
+        WHERE (RTRIM(LTRIM(Tableno)) = RTRIM(LTRIM(@tableNo)) OR Tableno = @tableNo)
           AND (isOrderClosed = 0 OR isOrderClosed IS NULL)
           AND OrderId <> @orderGuid
       `);
@@ -1168,7 +1168,7 @@ router.post("/send", async (req, res) => {
           SELECT COUNT(*) AS SentCount
           FROM RestaurantOrderDetailCur d
           JOIN RestaurantOrderCur h ON h.OrderId = d.OrderId
-          WHERE (h.Tableno = @TableNoCheck OR h.Tableno = @tidForCheck)
+          WHERE (RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(@TableNoCheck)) OR RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(@tidForCheck)))
             AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
             AND d.StatusCode >= 2
         `);
@@ -1207,8 +1207,8 @@ router.post("/send", async (req, res) => {
               SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
               FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
             ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
-            WHERE (h.Tableno = (SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tableNo OR (TRY_CAST(@tableNo AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tableNo AS UNIQUEIDENTIFIER)))
-              OR h.Tableno = @tableNo) 
+            WHERE (RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM((SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tableNo OR (TRY_CAST(@tableNo AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tableNo AS UNIQUEIDENTIFIER)))))
+              OR RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(@tableNo))) 
               AND (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL) 
               AND d.StatusCode <> 0`);
         clientItems = dbItems.recordset;
