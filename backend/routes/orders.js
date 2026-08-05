@@ -399,7 +399,7 @@ async function syncToProfessionalTables(
             IsTakeAway = @isTakeaway,
             DiscountAmount = CASE WHEN @discAmt > 0 THEN @discAmt ELSE DiscountAmount END,
             DiscountRemarks = CASE WHEN @discRemarks IS NOT NULL THEN @discRemarks ELSE DiscountRemarks END,
-            entry_status = CASE WHEN @entryStatus IS NOT NULL THEN @entryStatus ELSE entry_status END,
+            entry_status = @entryStatus,
             MobileNo = ISNULL(MobileNo, @mobileNo),
             CustomerName = ISNULL(CustomerName, @customerName),
             OrderNumber = CASE 
@@ -1349,8 +1349,8 @@ router.post("/send", async (req, res) => {
         .input("entryStatus", sql.NVarChar(10), isQROrder ? "q" : null).query(`
           UPDATE TableMaster 
           SET Status = @status, 
-              entry_status = CASE WHEN @entryStatus IS NOT NULL THEN @entryStatus ELSE entry_status END,
-              PAYMENT_STATUS = CASE WHEN @entryStatus IS NOT NULL THEN @paymentStatus ELSE PAYMENT_STATUS END,
+              entry_status = @entryStatus,
+              PAYMENT_STATUS = @paymentStatus,
               CurrentOrderId = @oid,
               StartTime = CASE WHEN StartTime IS NULL OR StartTime < '2000-01-01' THEN GETDATE() ELSE StartTime END,
               ModifiedOn = GETDATE()
