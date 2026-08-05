@@ -307,7 +307,7 @@ router.post("/kitchen-printers/update", async (req, res) => {
       const isActiveValue = printer.isActive === 0 || printer.isActive === false ? 0 : 1;
 
       if (isGuid) {
-        // Existing printer: update path, name, and active status
+        // Existing printer by GUID: update path, name, and active status
         await pool.request()
           .input("printerId", sql.UniqueIdentifier, targetId)
           .input("ip", sql.NVarChar, printerIp)
@@ -319,24 +319,43 @@ router.post("/kitchen-printers/update", async (req, res) => {
             WHERE PrinterId = @printerId
           `);
       } else if (printer.type === 2) {
-        // New/Virtual kitchen printer: insert it!
-        await pool.request()
-          .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
-          .input("ip", sql.NVarChar, printerIp || "192.168.0.20")
-          .input("code", sql.Int, parseInt(printer.id))
-          .input("isActive", sql.Bit, isActiveValue)
-          .query(`
-            INSERT INTO PrintMaster (
-              PrinterId, PrinterName, PrinterPath, PrinterIP, 
-              PrinterType, PrintSection, KitchenTypeName, 
-              KitchenTypeValue, IsActive, PrintCopy
-            )
-            VALUES (
-              NEWID(), @name, @ip, @ip, 
-              2, 1, @name, 
-              @code, @isActive, 1
-            )
-          `);
+        // Kitchen printer by KitchenTypeValue: check if existing row exists
+        const codeVal = parseInt(printer.id);
+        const existingCheck = await pool.request()
+          .input("code", sql.Int, isNaN(codeVal) ? 0 : codeVal)
+          .query("SELECT TOP 1 PrinterId FROM PrintMaster WHERE KitchenTypeValue = @code AND PrinterType = 2");
+
+        if (existingCheck.recordset.length > 0) {
+          await pool.request()
+            .input("code", sql.Int, isNaN(codeVal) ? 0 : codeVal)
+            .input("ip", sql.NVarChar, printerIp)
+            .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
+            .input("isActive", sql.Bit, isActiveValue)
+            .query(`
+              UPDATE PrintMaster 
+              SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive
+              WHERE KitchenTypeValue = @code AND PrinterType = 2
+            `);
+        } else {
+          // New insert
+          await pool.request()
+            .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
+            .input("ip", sql.NVarChar, printerIp || "192.168.0.20")
+            .input("code", sql.Int, isNaN(codeVal) ? 0 : codeVal)
+            .input("isActive", sql.Bit, isActiveValue)
+            .query(`
+              INSERT INTO PrintMaster (
+                PrinterId, PrinterName, PrinterPath, PrinterIP, 
+                PrinterType, PrintSection, KitchenTypeName, 
+                KitchenTypeValue, IsActive, PrintCopy
+              )
+              VALUES (
+                NEWID(), @name, @ip, @ip, 
+                2, 1, @name, 
+                @code, @isActive, 1
+              )
+            `);
+        }
       } else {
         // Cashier or Takeaway fallback by type
         await pool.request()
