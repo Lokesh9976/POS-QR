@@ -176,8 +176,8 @@ async function getOrGenerateOrderId(req, tableId) {
     // 2. Instant check for existing ID
     const quickCheck = await pool
       .request()
-      .input("tid", sql.UniqueIdentifier, cleanId)
-      .query("SELECT CurrentOrderId FROM TableMaster WHERE TableId = @tid");
+      .input("tid", sql.VarChar(50), cleanId)
+      .query("SELECT CurrentOrderId FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))");
 
     let existingId = quickCheck.recordset[0]?.CurrentOrderId;
     if (
@@ -1096,14 +1096,14 @@ router.post("/save-cart", async (req, res) => {
               StartTime = CASE WHEN @oid IS NOT NULL AND (StartTime IS NULL OR StartTime < '2000-01-01') THEN GETDATE() 
                                WHEN @oid IS NULL THEN NULL 
                                ELSE StartTime END
-          WHERE TableId = @tid
+          WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))
         `);
 
       // 🔹 QR ORDER: If entryStatus is 'q', set table to Status 1 (Dining/Active)
       if (entryStatus === "q" && hasItems) {
         await transaction.request().input("tid", sql.VarChar(50), cleanId)
           .query(`
-            UPDATE TableMaster SET Status = 1, entry_status = 'q', PAYMENT_STATUS = 0 WHERE TableId = @tid
+            UPDATE TableMaster SET Status = 1, entry_status = 'q', PAYMENT_STATUS = 0 WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))
           `);
       }
 
@@ -1354,7 +1354,7 @@ router.post("/send", async (req, res) => {
               CurrentOrderId = @oid,
               StartTime = CASE WHEN StartTime IS NULL OR StartTime < '2000-01-01' THEN GETDATE() ELSE StartTime END,
               ModifiedOn = GETDATE()
-          WHERE TableId = @tid
+          WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))
         `);
 
       await transaction.commit();
@@ -1365,7 +1365,7 @@ router.post("/send", async (req, res) => {
           const tableQuery = await pool
             .request()
             .input("tid", sql.VarChar(50), cleanId)
-            .query("SELECT TableNumber FROM TableMaster WHERE TableId = @tid");
+            .query("SELECT TableNumber FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))");
           const tableNo = tableQuery.recordset[0]?.TableNumber ? String(tableQuery.recordset[0].TableNumber).trim() : "";
 
           await queueQRPrintJobs(pool, sql, {
