@@ -190,7 +190,7 @@ async function getOrGenerateOrderId(req, tableId) {
       // Check if this existing ID is already closed in the database
       const closedCheck = await pool.request()
         .input("oid", sql.NVarChar(50), existingId)
-        .query("SELECT TOP 1 isOrderClosed FROM RestaurantOrderCur WHERE OrderNumber = @oid OR OrderId = @oid");
+        .query("SELECT TOP 1 isOrderClosed FROM RestaurantOrderCur WHERE OrderNumber = @oid OR (TRY_CAST(@oid AS UNIQUEIDENTIFIER) IS NOT NULL AND OrderId = TRY_CAST(@oid AS UNIQUEIDENTIFIER))");
 
       const isClosed = closedCheck.recordset[0]?.isOrderClosed === true;
       if (!isClosed) {
