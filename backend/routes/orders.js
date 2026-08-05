@@ -1491,7 +1491,7 @@ router.get("/cart/:tableId", async (req, res) => {
           await pool.request()
             .input("tid", sql.VarChar(50), cleanId)
             .input("oid", sql.NVarChar(50), currentOrderId)
-            .query("UPDATE TableMaster SET CurrentOrderId = @oid, StartTime = ISNULL(StartTime, GETDATE()) WHERE TableId = @tid");
+            .query("UPDATE TableMaster SET CurrentOrderId = @oid, StartTime = ISNULL(StartTime, GETDATE()) WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))");
         }
       } catch (err) {
         console.warn("⚠️ Failed to resolve active DB order in /cart:", err.message);
