@@ -1389,7 +1389,7 @@ router.post("/send", async (req, res) => {
           .request()
           .input("tid", sql.VarChar(50), cleanId)
           .query(
-            "SELECT TableNumber, DiningSection FROM TableMaster WHERE TableId = @tid",
+            "SELECT TableNumber, DiningSection FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))",
           );
         const tableRow = tableQuery.recordset[0];
         const tableNo = tableRow?.TableNumber
@@ -1464,7 +1464,7 @@ router.get("/cart/:tableId", async (req, res) => {
       .request()
       .input("tid", sql.VarChar(50), cleanId)
       .query(
-        "SELECT TableNumber, CurrentOrderId FROM TableMaster WHERE TableId = @tid",
+        "SELECT TableNumber, CurrentOrderId FROM TableMaster WHERE TableNumber = @tid OR (TRY_CAST(@tid AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tid AS UNIQUEIDENTIFIER))",
       );
 
     const tableRow = tableInfo.recordset[0];
