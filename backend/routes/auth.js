@@ -2,11 +2,55 @@ const express = require("express");
 const router = express.Router();
 const { poolPromise, sql } = require("../config/db");
 const jwt = require("jsonwebtoken");
+const { createMailTransporter } = require("../utils/mailTransporter");
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error("FATAL: JWT_SECRET environment variable is not set!");
 }
 const bcrypt = require("bcryptjs");
+
+async function sendWelcomeEmail({ email, name, phone, promoCode, promoAmount }) {
+  if (!email || !email.includes("@")) return;
+  try {
+    const { transporter, from } = createMailTransporter();
+    const htmlContent = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 12px; background-color: #ffffff;">
+        <div style="text-align: center; padding-bottom: 20px; border-bottom: 2px solid #ff5e1a;">
+          <h1 style="color: #ff5e1a; margin: 0; font-size: 26px;">🎉 Welcome to Membership!</h1>
+          <p style="color: #666; font-size: 14px; margin-top: 5px;">Smart POS & QR Ordering</p>
+        </div>
+        <div style="padding: 20px 0;">
+          <h2 style="color: #333; font-size: 20px;">Hello ${name},</h2>
+          <p style="color: #555; font-size: 15px; line-height: 1.6;">
+            Thank you for registering as a member with us at your table! Your account has been successfully created and activated.
+          </p>
+          <div style="background-color: #f8fafc; border-left: 4px solid #ff5e1a; padding: 15px; border-radius: 6px; margin: 20px 0;">
+            <p style="margin: 5px 0; color: #333;"><strong>Member Name:</strong> ${name}</p>
+            <p style="margin: 5px 0; color: #333;"><strong>Registered Phone:</strong> ${phone}</p>
+            <p style="margin: 5px 0; color: #333;"><strong>Registered Email:</strong> ${email}</p>
+            ${promoCode ? `<p style="margin: 5px 0; color: #16a34a;"><strong>Promo Code Applied:</strong> ${promoCode} ($${promoAmount} Bonus Credit)</p>` : ''}
+          </div>
+          <p style="color: #555; font-size: 14px; line-height: 1.6;">
+            You can now enjoy table-side QR ordering, exclusive member perks, and instant receipts directly on your phone!
+          </p>
+        </div>
+        <div style="text-align: center; padding-top: 20px; border-top: 1px solid #eee; color: #999; font-size: 12px;">
+          <p style="margin: 0;">© 2026 UNIPRO Smart POS System. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: `"Smart POS" <${from}>`,
+      to: email,
+      subject: `Welcome to Smart POS, ${name}! Your Membership is Confirmed 🎉`,
+      html: htmlContent,
+    });
+    console.log(`✉️ [Mail] Welcome email sent to new member: ${email}`);
+  } catch (err) {
+    console.warn(`⚠️ [Mail] Could not send welcome email to ${email}:`, err.message);
+  }
+}
 
 /* ================= AUTH - LOGIN ================= */
 router.post("/login", async (req, res) => {
@@ -519,6 +563,17 @@ router.post("/signup", async (req, res) => {
       FROM MemberMaster M
       WHERE M.Name = @username
   `);
+
+    // ✉️ Send Welcome Email to newly registered QR customer member
+    sendWelcomeEmail({
+      email,
+      name: username,
+      phone,
+      promoCode: req.body.promoCode || "",
+      promoAmount
+    }).catch(mailErr => {
+      console.warn("⚠️ [Mail] Async Welcome email failed:", mailErr.message);
+    });
 
     res.json({
       success: true,
