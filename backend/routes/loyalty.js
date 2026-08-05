@@ -913,9 +913,8 @@ router.get("/customer/:phone/orders", async (req, res) => {
             ), 'CASH'
           ) AS PayMode
         FROM SettlementHeader sh
-        WHERE (@Last8 <> '' AND (sh.MobileNo LIKE '%' + @Last8 + '%' OR REPLACE(REPLACE(sh.MobileNo, ' ', ''), '+', '') LIKE '%' + @Last8 + '%'))
-           OR (@Phone <> '' AND sh.MobileNo = @Phone)
-           OR (@TableNo <> '' AND RTRIM(LTRIM(sh.TableNo)) = @TableNo AND sh.CreatedOn >= DATEADD(hour, -24, GETDATE()))
+        WHERE (@Phone <> '' AND REPLACE(REPLACE(sh.MobileNo, ' ', ''), '+', '') = @Phone)
+           OR (@Last8 <> '' AND RIGHT(REPLACE(REPLACE(sh.MobileNo, ' ', ''), '+', ''), 8) = @Last8)
 
         UNION ALL
 
@@ -928,9 +927,8 @@ router.get("/customer/:phone/orders", async (req, res) => {
           CASE WHEN ro.StatusCode = 4 THEN 1 ELSE 0 END AS IsCancelled,
           'QR Order' AS PayMode
         FROM RestaurantOrderCur ro
-        WHERE ((@Last8 <> '' AND (ro.MobileNo LIKE '%' + @Last8 + '%' OR REPLACE(REPLACE(ro.MobileNo, ' ', ''), '+', '') LIKE '%' + @Last8 + '%'))
-           OR (@Phone <> '' AND ro.MobileNo = @Phone)
-           OR (@TableNo <> '' AND RTRIM(LTRIM(ro.Tableno)) = @TableNo AND ro.CreatedOn >= DATEADD(hour, -24, GETDATE())))
+        WHERE (@Phone <> '' AND REPLACE(REPLACE(ro.MobileNo, ' ', ''), '+', '') = @Phone)
+           OR (@Last8 <> '' AND RIGHT(REPLACE(REPLACE(ro.MobileNo, ' ', ''), '+', ''), 8) = @Last8)
           AND NOT EXISTS (
             SELECT 1 FROM SettlementHeader sh_check 
             WHERE sh_check.BillNo = ro.OrderNumber OR CAST(sh_check.OrderId AS NVARCHAR(100)) = CAST(ro.OrderId AS NVARCHAR(100))

@@ -121,7 +121,7 @@ function _formatItem(item) {
 
   if (item.modifiers && item.modifiers.length > 0) {
     item.modifiers.forEach(m => {
-      text += `[L]    + ${m.ModifierName || m.name}\n`;
+      text += `[L]    <font size='big'><B>+ ${m.ModifierName || m.name}</B></font>\n`;
     });
   }
 

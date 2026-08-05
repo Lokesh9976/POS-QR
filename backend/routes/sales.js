@@ -1590,6 +1590,7 @@ router.post("/save", async (req, res) => {
     let tableCustomerName = null;
     let orderPax = null;
     let orderCustomerName = null;
+    let orderMobileNo = null;
 
     const cleanTableId = toGuidOrNull(tableId);
     if (cleanTableId) {
@@ -1652,14 +1653,15 @@ router.post("/save", async (req, res) => {
         voidAmount = voidRes.recordset[0]?.VAmt || 0;
         console.log(`[SAVE SALE] Voids captured from DB: Qty=${voidQty}, Amt=${voidAmount}`);
 
-        // 🚀 SYNC SYIELD: Fetch Master GUID OrderId, Pax, and CustomerName for Relation Integrity
+        // 🚀 SYNC SYIELD: Fetch Master GUID OrderId, Pax, CustomerName and MobileNo for Relation Integrity
         const guidRes = await transaction.request()
             .input("orderNo", sql.NVarChar(100), displayOrderId)
-            .query("SELECT TOP 1 OrderId, Pax, CustomerName FROM RestaurantOrderCur WITH (UPDLOCK) WHERE OrderNumber = @orderNo");
+            .query("SELECT TOP 1 OrderId, Pax, CustomerName, MobileNo FROM RestaurantOrderCur WITH (UPDLOCK) WHERE OrderNumber = @orderNo");
         const guidOrderId = guidRes.recordset[0]?.OrderId || settlementId;
         orderPax = guidRes.recordset[0]?.Pax;
         orderCustomerName = guidRes.recordset[0]?.CustomerName;
-        console.log(`[SAVE SALE] Master Sync -> GUID OrderId: ${guidOrderId}, orderPax: ${orderPax}, orderCustomerName: ${orderCustomerName}`);
+        orderMobileNo = guidRes.recordset[0]?.MobileNo;
+        console.log(`[SAVE SALE] Master Sync -> GUID OrderId: ${guidOrderId}, orderPax: ${orderPax}, orderCustomerName: ${orderCustomerName}, orderMobileNo: ${orderMobileNo}`);
 
      // Split Bill unique bill/invoice suffix generator
     finalBillNo = displayOrderId;
@@ -1672,7 +1674,7 @@ router.post("/save", async (req, res) => {
        finalBillNo = `${displayOrderId}-S${splitCount}`;
        splitIndexValue = splitCount;
      }
-     console.log(`[SAVE SALE] Final Bill No: ${finalBillNo} (isSplit: ${isSplitParsed || false}, index: ${splitIndexValue || "none"})`);
+      console.log(`[SAVE SALE] Final Bill No: ${finalBillNo} (isSplit: ${isSplitParsed || false}, index: ${splitIndexValue || "none"})`);
 
     // Merge history count retriever
     const mergeCountResult = await transaction.request()
@@ -1704,7 +1706,7 @@ router.post("/save", async (req, res) => {
       .input("CreatedBy", sql.UniqueIdentifier, sanitizeGuid(cashierId))
       .input("CreatedOn", sql.DateTime, now)
       .input("SER_NAME", sql.NVarChar(255), req.body.serverName || null)
-      .input("MobileNo", sql.NVarChar(50), req.body.mobileNo || req.body.MobileNo || null)
+      .input("MobileNo", sql.NVarChar(50), req.body.mobileNo || req.body.MobileNo || orderMobileNo || null)
       .input("VoidItemQty", sql.Int, voidQty)
       .input("VoidItemAmount", sql.Money, voidAmount)
       .input("RoundedBy", sql.Money, roundOff || 0)

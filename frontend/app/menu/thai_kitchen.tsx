@@ -476,67 +476,23 @@ export default function MenuScreen() {
     }
 
     try {
-      const cart = useCartStore.getState().carts[currentContextId!] || [];
-      const kitchenGroups: Record<string, any[]> = {};
-      const expandedItems: any[] = [];
-      
-      cart
-        .filter((i: any) => i.status !== "VOIDED")
-        .forEach((item: any) => {
-          expandedItems.push(item);
-          if (item.comboSelections && item.comboSelections.length > 0) {
-            item.comboSelections.forEach((g: any) => {
-              if (Array.isArray(g.items)) {
-                g.items.forEach((opt: any) => {
-                  const optKitchenCode = opt.KitchenTypeCode || opt.kitchenCode || opt.kitchenTypeCode;
-                  const parentKitchenCode = item.KitchenTypeCode || item.kitchenCode || item.kitchenTypeCode || "0";
-                  if (optKitchenCode && optKitchenCode !== parentKitchenCode) {
-                    expandedItems.push({
-                      ...opt,
-                      id: opt.dishId,
-                      qty: item.quantity || item.qty || 1,
-                      price: 0,
-                      name: `${opt.name} (Combo - ${item.name})`,
-                      KitchenTypeCode: optKitchenCode,
-                      KitchenTypeName: opt.KitchenTypeName || opt.kitchenTypeName,
-                      PrinterIP: opt.PrinterIP || opt.printerIp,
-                    });
-                  }
-                });
-              }
-            });
-          }
-        });
+      const activeItems = cart.filter((i: any) => i.status !== "VOIDED");
+      const contextObj = {
+        orderType: orderContext?.orderType,
+        tableNo: orderContext?.tableNo,
+        takeawayNo: orderContext?.takeawayNo,
+        section: orderContext?.section,
+      };
 
-      expandedItems.forEach((item: any) => {
-        const kCode = item.KitchenTypeCode || "0";
-        if (!kitchenGroups[kCode]) kitchenGroups[kCode] = [];
-        kitchenGroups[kCode].push(item);
-      });
-
-      for (const [kCode, items] of Object.entries(kitchenGroups)) {
-        const kName =
-          items[0].KitchenTypeName || (kCode === "0" ? "KITCHEN" : kCode);
-        const printerIp = items[0].PrinterIP;
-        const kotData = {
-          orderId: displayOrderId,
-          orderNo: displayOrderId,
-          tableNo:
-            orderContext?.orderType === "DINE_IN"
-              ? orderContext.tableNo
-              : `TW-${orderContext?.takeawayNo}`,
-          deviceNo: "1",
-          waiterName: orderContext?.serverName || "Staff",
-          items: items,
-          kitchenName: kName,
-        };
-        await UniversalPrinter.printKOT(
-          kotData,
-          "SYSTEM",
-          "REPRINT",
-          printerIp,
-        );
-      }
+      await UniversalPrinter.routeAndPrintOrderKOT(
+        displayOrderId || "",
+        contextObj,
+        activeItems,
+        false,
+        orderContext?.serverName || "Staff",
+        true,
+        true
+      );
 
       showToast({
         type: "success",

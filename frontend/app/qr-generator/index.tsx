@@ -59,7 +59,8 @@ export default function QRGeneratorScreen() {
   const router = useRouter();
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedSection, setSelectedSection] = useState<string>("all");
+  const [printing, setPrinting] = useState(false);
+  const [selectedSection, setSelectedSection] = useState<string>("1");
   const [baseUrl, setBaseUrl] = useState("");
 
   useEffect(() => {
@@ -82,26 +83,33 @@ export default function QRGeneratorScreen() {
     }
   };
 
+  const fetchQrAsBase64 = async (qrUrl: string): Promise<string> => {
+    const qrImgUrl = QR_API(qrUrl, 250);
+    const response = await fetch(qrImgUrl);
+    if (!response.ok) throw new Error("Failed to fetch QR image");
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
 
   const buildQrUrl = (table: Table) => {
     const sectionName = SECTION_NAMES[table.DiningSection] || "SECTION_1";
     return `${baseUrl}/customer?tableId=${table.id}&tableNo=${encodeURIComponent(table.label)}&section=${sectionName}`;
   };
 
-  const sections = ["all", "1", "2", "3", "4"];
+  const sections = ["1", "2", "3", "4"];
   const sectionLabels: Record<string, string> = {
-    all: "All Tables",
     "1": "Section 1",
     "2": "Section 2",
     "3": "Section 3",
     "4": "Takeaway",
   };
 
-  const filteredTables =
-    selectedSection === "all"
-      ? tables
-      : tables.filter((t) => t.DiningSection === selectedSection);
-
+  const filteredTables = tables.filter((t) => t.DiningSection === selectedSection);
 
   const handleShare = async (table: Table) => {
     const url = buildQrUrl(table);
@@ -116,132 +124,139 @@ export default function QRGeneratorScreen() {
     }
   };
 
-  const handlePrintAll = () => {
-    if (Platform.OS !== "web") {
-      Alert.alert(
-        "Print QR Codes",
-        "Open this page in a web browser on your PC to print all QR codes."
-      );
-      return;
-    }
-    window.print();
-  };
-
   const handlePrintSingle = async (table: Table) => {
-    const qrUrl = buildQrUrl(table);
-    const qrImgUrl = QR_API(qrUrl, 250);
-    const sectionName = sectionLabels[table.DiningSection] || "Section 1";
+    setPrinting(true);
+    try {
+      const qrUrl = buildQrUrl(table);
+      const base64Qr = await fetchQrAsBase64(qrUrl);
+      const sectionName = sectionLabels[table.DiningSection] || "Section 1";
 
-    const htmlContent = `
-      <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-          <style>
-            @page {
-              size: auto;
-              margin: 0mm;
-            }
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: flex-start;
-              margin: 0;
-              padding: 10px;
-              box-sizing: border-box;
-              text-align: center;
-              background-color: #fff;
-            }
-            .card {
-              border: 2px dashed #0F172A;
-              border-radius: 12px;
-              padding: 16px;
-              width: 260px;
-              box-sizing: border-box;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              background: #fff;
-              margin: 10px auto;
-            }
-            .qr-image {
-              width: 180px;
-              height: 180px;
-              margin-bottom: 12px;
-            }
-            .title {
-              font-size: 22px;
-              font-weight: 800;
-              margin: 6px 0 4px 0;
-              color: #0F172A;
-            }
-            .section {
-              font-size: 13px;
-              font-weight: 600;
-              color: #475569;
-              background: #F1F5F9;
-              padding: 3px 8px;
-              border-radius: 6px;
-              margin-bottom: 8px;
-              display: inline-block;
-            }
-            .hint {
-              font-size: 12px;
-              color: #0284c7;
-              font-weight: 700;
-              margin-top: 4px;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-            }
-            .url {
-              font-size: 9px;
-              color: #64748B;
-              word-break: break-all;
-              max-width: 100%;
-              margin-top: 6px;
-              font-family: monospace;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <img class="qr-image" src="${qrImgUrl}" alt="QR Code" />
-            <div class="title">Table ${table.label}</div>
-            <div class="section">${sectionName}</div>
-            <div class="hint">Scan to Order</div>
-            <div class="url">${qrUrl}</div>
-          </div>
-        </body>
-      </html>
-    `;
+      const htmlContent = `
+        <html>
+          <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+              @page {
+                size: auto;
+                margin: 0mm;
+              }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: flex-start;
+                margin: 0;
+                padding: 10px;
+                box-sizing: border-box;
+                text-align: center;
+                background-color: #fff;
+              }
+              .card {
+                border: 2px dashed #0F172A;
+                border-radius: 12px;
+                padding: 16px;
+                width: 260px;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                background: #fff;
+                margin: 10px auto;
+              }
+              .qr-image {
+                width: 180px;
+                height: 180px;
+                margin-bottom: 12px;
+              }
+              .title {
+                font-size: 22px;
+                font-weight: 800;
+                margin: 6px 0 4px 0;
+                color: #0F172A;
+              }
+              .section {
+                font-size: 13px;
+                font-weight: 600;
+                color: #475569;
+                background: #F1F5F9;
+                padding: 3px 8px;
+                border-radius: 6px;
+                margin-bottom: 8px;
+                display: inline-block;
+              }
+              .hint {
+                font-size: 12px;
+                color: #0284c7;
+                font-weight: 700;
+                margin-top: 4px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+              }
+              .url {
+                font-size: 9px;
+                color: #64748B;
+                word-break: break-all;
+                max-width: 100%;
+                margin-top: 6px;
+                font-family: monospace;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <img class="qr-image" src="${base64Qr}" alt="QR Code" />
+              <div class="title">Table ${table.label}</div>
+              <div class="section">${sectionName}</div>
+              <div class="hint">Scan to Order</div>
+              <div class="url">${qrUrl}</div>
+            </div>
+          </body>
+        </html>
+      `;
 
-    if (Platform.OS === "web") {
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(htmlContent);
-        printWindow.document.write(
-          '<script>' +
-          '  window.onload = function() {' +
-          '    window.print();' +
-          '    setTimeout(function() {' +
-          '      window.close();' +
-          '    }, 500);' +
-          '  };' +
-          '</script>'
-        );
-        printWindow.document.close();
+      if (Platform.OS === "web") {
+        const iframe = document.createElement("iframe");
+        iframe.style.position = "absolute";
+        iframe.style.width = "0px";
+        iframe.style.height = "0px";
+        iframe.style.border = "none";
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentWindow || iframe.contentDocument;
+        // @ts-ignore
+        const iframeDoc = doc.document || doc;
+        iframeDoc.write(htmlContent);
+        iframeDoc.close();
+
+        iframe.onload = () => {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+          }, 1000);
+        };
+
+        setTimeout(() => {
+          if (document.body.contains(iframe)) {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            setTimeout(() => {
+              if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+              }
+            }, 1000);
+          }
+        }, 500);
       } else {
-        Alert.alert("Error", "Pop-up blocker prevented printing. Please allow pop-ups for this site.");
-      }
-    } else {
-      try {
         await Print.printAsync({
           html: htmlContent,
         });
-      } catch (error) {
-        Alert.alert("Print Error", "Failed to print the QR code.");
       }
+    } catch (error) {
+      Alert.alert("Print Error", "Failed to print the QR code.");
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -267,10 +282,6 @@ export default function QRGeneratorScreen() {
             Print and place on each table for customer ordering
           </Text>
         </View>
-        <TouchableOpacity style={styles.printBtn} onPress={handlePrintAll}>
-          <Ionicons name="print-outline" size={18} color="#fff" />
-          <Text style={styles.printBtnText}>Print All</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Info Banner */}
@@ -419,6 +430,23 @@ export default function QRGeneratorScreen() {
             `,
           }}
         />
+      )}
+
+      {printing && (
+        <View style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 9999,
+        }}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={{ color: "#fff", marginTop: 12, fontWeight: "700" }}>Preparing Print...</Text>
+        </View>
       )}
     </View>
   );

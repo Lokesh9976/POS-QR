@@ -299,6 +299,8 @@ async function syncToProfessionalTables(
   isQROrder = false,
   discountAmount = 0,
   discountRemarks = null,
+  mobileNo = null,
+  customerName = null,
 ) {
   const isTakeaway =
     !tableId ||
@@ -330,7 +332,7 @@ async function syncToProfessionalTables(
       DECLARE @ActualTableNo VARCHAR(20) = 'TAKEAWAY';
       DECLARE @Section INT = 4;
       DECLARE @Pax INT = NULL;
-      DECLARE @CustomerName NVARCHAR(9) = NULL;
+      DECLARE @CustomerName NVARCHAR(150) = NULL;
       IF @tableId IS NOT NULL 
         SELECT TOP 1 @ActualTableNo = TableNumber, @Section = ISNULL(DiningSection, 4), @Pax = Pax, @CustomerName = CustomerName FROM TableMaster WHERE TableId = @tableId;
 
@@ -373,6 +375,8 @@ async function syncToProfessionalTables(
       .input("discAmt", sql.Decimal(18, 2), discountAmount || 0)
       .input("discRemarks", sql.NVarChar(250), discountRemarks || null)
       .input("entryStatus", sql.NVarChar(10), isQROrder ? "q" : null)
+      .input("mobileNo", sql.NVarChar(50), mobileNo || null)
+      .input("customerName", sql.NVarChar(150), customerName || null)
       .query(`
         UPDATE RestaurantOrderCur 
         SET PriorityCode = ISNULL(PriorityCode, @priority),
@@ -380,6 +384,8 @@ async function syncToProfessionalTables(
             DiscountAmount = CASE WHEN @discAmt > 0 THEN @discAmt ELSE DiscountAmount END,
             DiscountRemarks = CASE WHEN @discRemarks IS NOT NULL THEN @discRemarks ELSE DiscountRemarks END,
             entry_status = CASE WHEN @entryStatus IS NOT NULL THEN @entryStatus ELSE entry_status END,
+            MobileNo = ISNULL(MobileNo, @mobileNo),
+            CustomerName = ISNULL(CustomerName, @customerName),
             OrderNumber = CASE 
                             WHEN OrderNumber IS NULL OR OrderNumber = '' OR OrderNumber = 'PENDING' OR OrderNumber = 'NEW' OR OrderNumber = '#NEW' OR OrderNumber LIKE 'TEMP-%' THEN @orderNo 
                             ELSE OrderNumber 
@@ -408,14 +414,15 @@ async function syncToProfessionalTables(
       .input("priority", sql.Int, priorityCode)
       .input("isTakeaway", sql.Bit, isTakeaway ? 1 : 0)
       .input("pax", sql.Int, tablePax)
-      .input("customerName", sql.NVarChar, tableCustomerName)
+      .input("customerName", sql.NVarChar(150), customerName || tableCustomerName)
       .input("takeawayCharge", sql.Decimal(18, 2), initialTakeawayCharge)
       .input("startDate", sql.Date, startDate)
       .input("discAmt", sql.Decimal(18, 2), discountAmount || 0)
       .input("discRemarks", sql.NVarChar(250), discountRemarks || null)
       .input("entryStatus", sql.NVarChar(10), isQROrder ? "q" : null)
+      .input("mobileNo", sql.NVarChar(50), mobileNo || null)
       .query(
-        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName, TakeawayCharge, start_date, DiscountAmount, DiscountRemarks, entry_status) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName, @takeawayCharge, @startDate, @discAmt, @discRemarks, @entryStatus)",
+        "INSERT INTO RestaurantOrderCur (OrderId, OrderNumber, OrderDateTime, Tableno, StatusCode, CreatedBy, CreatedOn, isOrderClosed, BusinessUnitId, PriorityCode, IsTakeAway, Pax, CustomerName, TakeawayCharge, start_date, DiscountAmount, DiscountRemarks, entry_status, MobileNo) VALUES (@orderId, @orderNo, GETDATE(), @tableNo, 1, @userId, GETDATE(), 0, @bizId, @priority, @isTakeaway, @pax, @customerName, @takeawayCharge, @startDate, @discAmt, @discRemarks, @entryStatus, @mobileNo)",
       );
   }
 
@@ -957,6 +964,8 @@ router.post("/save-cart", async (req, res) => {
       version,
       skipTableStatusSync,
       entryStatus,
+      mobileNo,
+      customerName,
     } = req.body;
     const pool = await poolPromise;
     
@@ -1053,6 +1062,10 @@ router.post("/save-cart", async (req, res) => {
         userId,
         formattedStartDate,
         entryStatus === "q",
+        0,
+        null,
+        mobileNo,
+        customerName,
       );
 
       // 🚀 CRITICAL: Update TableMaster INSIDE the same transaction
@@ -1125,7 +1138,7 @@ router.post("/save-cart", async (req, res) => {
 
 router.post("/send", async (req, res) => {
   try {
-    const { tableId, orderId, items, userId, discountAmount, discountRemarks } = req.body;
+    const { tableId, orderId, items, userId, discountAmount, discountRemarks, mobileNo, customerName } = req.body;
     const pool = await poolPromise;
     const cleanId = await getCleanTableId(pool, tableId);
 
@@ -1236,6 +1249,8 @@ router.post("/send", async (req, res) => {
         req.body.entryStatus === "q",
         discountAmount,
         discountRemarks,
+        mobileNo,
+        customerName,
       );
 
       // 4. Lock Table to the new ID

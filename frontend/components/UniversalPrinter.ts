@@ -942,9 +942,9 @@ class UniversalPrinter {
           }
           
           .modifier-item {
-            font-size: 16px;
-            font-weight: 600;
-            color: #333;
+            font-size: 20px;
+            font-weight: 900;
+            color: #000;
             display: block;
           }
           
@@ -1133,7 +1133,6 @@ class UniversalPrinter {
 
           <div class="footer">
             Order By : ${waiter} #OR-${orderNo}
-            ${tableNo && tableNo !== "N/A" ? `<div style="font-size: 14px; font-weight: 700; margin-top: 4px;">| Table: ${tableNo}</div>` : ""}
           </div>
 
           ${kitchenName && kitchenName !== "KDS" ? `<div class="kitchen-name">${kitchenName.toUpperCase()}${tableNo && tableNo !== "N/A" ? `  /  T.NO: ${tableNo}` : ""}</div>` : ""}
@@ -2058,19 +2057,20 @@ class UniversalPrinter {
     items: any[],
     isAdditional: boolean = false,
     waiterName: string = "Staff",
-    skipDuplicateGuard: boolean = false
+    skipDuplicateGuard: boolean = false,
+    isReprint: boolean = false
   ): Promise<boolean> {
     try {
       // 1. Duplicate-print guard (QR socket path only; cashier path passes skipDuplicateGuard=true)
       // Pass the raw items (pre-expansion) so the fingerprint reflects what the backend sent.
-      if (!skipDuplicateGuard && this.isDuplicatePrint(orderId, items)) {
+      if (!isReprint && !skipDuplicateGuard && this.isDuplicatePrint(orderId, items)) {
         return false;
       }
 
       // 2. Check enableKOT setting (same setting the cashier flow checks)
       const { useGeneralSettingsStore } = await import("../stores/generalSettingsStore");
       const { enableKOT, enableKDSPrint } = useGeneralSettingsStore.getState().settings;
-      if (!enableKOT) {
+      if (!isReprint && !enableKOT) {
         if (__DEV__) console.log("🖨️ [UniversalPrinter] KOT printing is disabled in General Settings.");
         return false;
       }
@@ -2135,7 +2135,7 @@ class UniversalPrinter {
           await this.printKOT(
             kotData,
             "SYSTEM",
-            isAdditional ? "ADDITIONAL" : "NEW",
+            isReprint ? "REPRINT" : (isAdditional ? "ADDITIONAL" : "NEW"),
             printerIp
           );
         } catch (grpErr: any) {
@@ -2144,7 +2144,7 @@ class UniversalPrinter {
       }
 
       // 6. KDS backup copy (respects enableKDSPrint setting)
-      if (enableKDSPrint !== false) {
+      if (isReprint || enableKDSPrint !== false) {
         try {
           const kdsData = {
             orderId,

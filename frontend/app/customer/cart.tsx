@@ -467,6 +467,8 @@ export default function CustomerCartScreen() {
             entryStatus: "q",
             discountAmount: discountAmt,
             discountRemarks: applyPromo && activePromoCode ? `Applied Promo Code: ${activePromoCode}` : null,
+            mobileNo: userInfo?.Phone || null,
+            customerName: userInfo?.FullName || userInfo?.UserName || null,
             items: currentCart.map(item => ({
               id: item.id,
               lineItemId: item.lineItemId || item.id,
