@@ -1210,7 +1210,7 @@ class UniversalPrinter {
           const modName = m.ModifierName || m.name || "";
           if (modName) {
             wrapText(modName, MOD_WRAP).forEach((chunk: string, idx: number) => {
-              t += idx === 0 ? `[L]  + ${chunk}\n` : `[L]    ${chunk}\n`;
+              t += idx === 0 ? `[L]    + ${chunk}\n` : `[L]      ${chunk}\n`;
             });
           }
         });
@@ -1221,7 +1221,7 @@ class UniversalPrinter {
         item.comboSelections.forEach((g: any) => {
           g.items?.forEach((opt: any) => {
             wrapText(opt.name || "", MOD_WRAP).forEach((chunk: string, idx: number) => {
-              t += idx === 0 ? `[L]  - ${chunk}\n` : `[L]    ${chunk}\n`;
+              t += idx === 0 ? `[L]    - ${chunk}\n` : `[L]      ${chunk}\n`;
             });
           });
         });
@@ -1231,7 +1231,7 @@ class UniversalPrinter {
       const noteText = item.note || item.notes || item.Remarks || item.remarks;
       if (noteText) {
         wrapText(noteText, MOD_WRAP).forEach((chunk: string, idx: number) => {
-          t += idx === 0 ? `[L]  * ${chunk}\n` : `[L]    ${chunk}\n`;
+          t += idx === 0 ? `[L]    * ${chunk}\n` : `[L]      ${chunk}\n`;
         });
       }
 

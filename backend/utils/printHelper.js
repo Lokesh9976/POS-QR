@@ -170,8 +170,8 @@ function _formatItem(item) {
       if (modName) {
         _wrapText(modName, MOD_WRAP).forEach((chunk, idx) => {
           text += idx === 0
-            ? `[L]  + ${chunk}\n`
-            : `[L]    ${chunk}\n`;
+            ? `[L]    + ${chunk}\n`
+            : `[L]      ${chunk}\n`;
         });
       }
     });
@@ -184,8 +184,8 @@ function _formatItem(item) {
         g.items.forEach(opt => {
           _wrapText(opt.name || '', MOD_WRAP).forEach((chunk, idx) => {
             text += idx === 0
-              ? `[L]  - ${chunk}\n`
-              : `[L]    ${chunk}\n`;
+              ? `[L]    - ${chunk}\n`
+              : `[L]      ${chunk}\n`;
           });
         });
       }
@@ -196,7 +196,7 @@ function _formatItem(item) {
   const noteText = item.note || item.notes || item.Remarks || item.remarks;
   if (noteText) {
     _wrapText(noteText, 44).forEach((chunk, idx) => {
-      text += idx === 0 ? `[L]  * ${chunk}\n` : `[L]    ${chunk}\n`;
+      text += idx === 0 ? `[L]    * ${chunk}\n` : `[L]      ${chunk}\n`;
     });
   }
 
