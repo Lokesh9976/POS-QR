@@ -993,6 +993,17 @@ async function initDB(pool) {
       END
     `);
 
+    // 24. Ensure IsEnabled column exists in PrintMaster
+    await runQuery("Ensure IsEnabled exists in PrintMaster", `
+      IF EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[PrintMaster]') AND type in (N'U'))
+      BEGIN
+          IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[PrintMaster]') AND name = 'IsEnabled')
+          BEGIN
+              ALTER TABLE [dbo].[PrintMaster] ADD [IsEnabled] BIT NOT NULL DEFAULT 1;
+          END
+      END
+    `);
+
     console.log("✅ Database schema and performance indexes are up to date. (Rewards system active)");
 
 

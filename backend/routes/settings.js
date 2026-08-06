@@ -327,7 +327,7 @@ router.post("/kitchen-printers/update", async (req, res) => {
           .input("isActive", sql.Bit, isActiveValue)
           .query(`
             UPDATE PrintMaster 
-            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive
+            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive, IsEnabled = @isActive
             WHERE KitchenTypeValue = @code AND PrinterType = 2
           `);
       } else if (isGuid) {
@@ -339,7 +339,7 @@ router.post("/kitchen-printers/update", async (req, res) => {
           .input("isActive", sql.Bit, isActiveValue)
           .query(`
             UPDATE PrintMaster 
-            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive
+            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive, IsEnabled = @isActive
             WHERE PrinterId = @printerId
           `);
       } else if (printer.type === 2) {
@@ -357,7 +357,7 @@ router.post("/kitchen-printers/update", async (req, res) => {
             .input("isActive", sql.Bit, isActiveValue)
             .query(`
               UPDATE PrintMaster 
-              SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive
+              SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive, IsEnabled = @isActive
               WHERE KitchenTypeValue = @code AND PrinterType = 2
             `);
         } else {
@@ -371,12 +371,12 @@ router.post("/kitchen-printers/update", async (req, res) => {
               INSERT INTO PrintMaster (
                 PrinterId, PrinterName, PrinterPath, PrinterIP, 
                 PrinterType, PrintSection, KitchenTypeName, 
-                KitchenTypeValue, IsActive, PrintCopy
+                KitchenTypeValue, IsActive, IsEnabled, PrintCopy
               )
               VALUES (
                 NEWID(), @name, @ip, @ip, 
                 2, 1, @name, 
-                @code, @isActive, 1
+                @code, @isActive, @isActive, 1
               )
             `);
         }
@@ -386,7 +386,7 @@ router.post("/kitchen-printers/update", async (req, res) => {
           .input("ip", sql.NVarChar, printerIp)
           .input("type", sql.Int, printer.type)
           .input("isActive", sql.Bit, isActiveValue)
-          .query("UPDATE PrintMaster SET PrinterPath = @ip, PrinterIP = @ip, IsActive = @isActive WHERE PrinterType = @type");
+          .query("UPDATE PrintMaster SET PrinterPath = @ip, PrinterIP = @ip, IsActive = @isActive, IsEnabled = @isActive WHERE PrinterType = @type");
       }
 
       // Sync to CompanySettings table if it's the Cashier printer
@@ -417,12 +417,12 @@ router.post("/kitchen-printers/add", async (req, res) => {
         INSERT INTO PrintMaster (
           PrinterId, PrinterName, PrinterPath, PrinterIP, 
           PrinterType, PrintSection, KitchenTypeName, 
-          KitchenTypeValue, IsActive, PrintCopy
+          KitchenTypeValue, IsActive, IsEnabled, PrintCopy
         )
         VALUES (
           NEWID(), @name, @ip, @ip, 
           2, 1, @name, 
-          @nextVal, 1, 1
+          @nextVal, 1, 1, 1
         )
       `);
 
@@ -440,7 +440,7 @@ router.post("/kitchen-printers/delete", async (req, res) => {
     
     await pool.request()
       .input("id", sql.Int, id)
-      .query("UPDATE PrintMaster SET IsActive = 0 WHERE KitchenTypeValue = @id");
+      .query("UPDATE PrintMaster SET IsActive = 0, IsEnabled = 0 WHERE KitchenTypeValue = @id");
 
     res.json({ success: true, message: "Kitchen printer deleted successfully" });
   } catch (err) {
