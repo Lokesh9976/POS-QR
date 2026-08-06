@@ -1149,16 +1149,6 @@ async function syncKitchensToPrintMaster(pool) {
           `);
         inserted++;
         console.log(`🍳 [KitchenSync] Auto-added "${name}" to PrintMaster (code=${code})`);
-      } else if (existingMap.get(code) === false || existingMap.get(code) === 0) {
-        // Soft-deleted but kitchen is still active → reactivate
-        await pool.request()
-          .input("code", sql.Int, code)
-          .query(`
-            UPDATE PrintMaster SET IsActive = 1
-            WHERE PrinterType = 2 AND KitchenTypeValue = @code AND IsActive = 0
-          `);
-        reactivated++;
-        console.log(`♻️ [KitchenSync] Reactivated kitchen "${name}" in PrintMaster (code=${code})`);
       }
     }
 
