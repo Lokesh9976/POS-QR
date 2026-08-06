@@ -317,12 +317,25 @@ router.post("/kitchen-printers/update", async (req, res) => {
       const printerIp = printer.ip || "";
       const isActiveValue = printer.isActive === 0 || printer.isActive === false ? 0 : 1;
 
-      if (isGuid) {
+      if (printer.type === 2) {
+        // Kitchen printer: update ALL rows matching this KitchenTypeValue to keep duplicate rows in sync
+        const codeVal = parseInt(printer.id);
+        await pool.request()
+          .input("code", sql.Int, isNaN(codeVal) ? 0 : codeVal)
+          .input("ip", sql.NVarChar, printerIp)
+          .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
+          .input("isActive", sql.Bit, isActiveValue)
+          .query(`
+            UPDATE PrintMaster 
+            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive
+            WHERE KitchenTypeValue = @code AND PrinterType = 2
+          `);
+      } else if (isGuid) {
         // Existing printer by GUID: update path, name, and active status
         await pool.request()
           .input("printerId", sql.UniqueIdentifier, targetId)
           .input("ip", sql.NVarChar, printerIp)
-          .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
+          .input("name", sql.NVarChar, printer.name || "Printer")
           .input("isActive", sql.Bit, isActiveValue)
           .query(`
             UPDATE PrintMaster 
