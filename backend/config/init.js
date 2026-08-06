@@ -953,6 +953,7 @@ async function initDB(pool) {
 
     // 27. Combo Meal Schema Migration
     await runQuery("DishMaster - IsCombo", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[DishMaster]') AND name = 'IsCombo') ALTER TABLE [dbo].[DishMaster] ADD IsCombo BIT NOT NULL DEFAULT 0");
+    await runQuery("PrintMaster - IsEnabled", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[PrintMaster]') AND name = 'IsEnabled') ALTER TABLE [dbo].[PrintMaster] ADD IsEnabled BIT NOT NULL DEFAULT 1");
     await runQuery("RestaurantOrderDetailCur - ComboDetailsJSON", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[RestaurantOrderDetailCur]') AND name = 'ComboDetailsJSON') ALTER TABLE [dbo].[RestaurantOrderDetailCur] ADD ComboDetailsJSON NVARCHAR(MAX) NULL");
     await runQuery("RestaurantOrderDetail - ComboDetailsJSON", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[RestaurantOrderDetail]') AND name = 'ComboDetailsJSON') ALTER TABLE [dbo].[RestaurantOrderDetail] ADD ComboDetailsJSON NVARCHAR(MAX) NULL");
     await runQuery("SettlementItemDetail - ComboDetailsJSON", "IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'[dbo].[SettlementItemDetail]') AND name = 'ComboDetailsJSON') ALTER TABLE [dbo].[SettlementItemDetail] ADD ComboDetailsJSON NVARCHAR(MAX) NULL");
