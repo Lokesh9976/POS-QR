@@ -505,11 +505,12 @@ router.get("/splitdishes", async (req, res) => {
   }
 });
 
-router.post("/clear-cache", (req, res) => {
+router.clearMenuCache = () => {
   cache.clear();
-  console.log("⚡ [MenuCache] Cache INVALIDATION: All menu cache cleared");
-  imageCache.clear();
-  console.log("⚡ [ImageCache] Cache INVALIDATION: All image cache cleared");
+  console.log("⚡ [MenuCache] Cache INVALIDATION: All menu cache cleared dynamically");
+  if (typeof imageCache !== 'undefined') {
+    try { imageCache.clear(); } catch(e){}
+  }
   try {
     const comboRoutes = require("./combo");
     if (comboRoutes && typeof comboRoutes.clearCache === "function") {
@@ -518,6 +519,10 @@ router.post("/clear-cache", (req, res) => {
   } catch (err) {
     console.error("Failed to clear combo cache:", err.message);
   }
+};
+
+router.post("/clear-cache", (req, res) => {
+  router.clearMenuCache();
   res.json({ success: true, message: "Menu and image cache cleared successfully" });
 });
 

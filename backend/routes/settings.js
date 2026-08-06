@@ -365,7 +365,16 @@ router.post("/kitchen-printers/update", async (req, res) => {
         await pool.request()
           .input("ip", sql.NVarChar, printerIp)
           .query("UPDATE CompanySettings SET PrinterIP = @ip");
+    }
+
+    // Clear menu cache so the new printer IsEnabled/PrinterIP configurations take effect immediately
+    try {
+      const menuRouter = require("./menu");
+      if (menuRouter && typeof menuRouter.clearMenuCache === "function") {
+        menuRouter.clearMenuCache();
       }
+    } catch (cacheErr) {
+      console.warn("Failed to clear menu cache:", cacheErr.message);
     }
 
     res.json({ success: true, message: "Printers updated successfully" });
