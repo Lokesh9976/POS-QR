@@ -6,22 +6,72 @@ async function run() {
     const pool = await poolPromise;
     console.log("Connected to database.");
 
-    // Let's search for dishIds for these items
+    // Query a larger list of dishes from DishMaster to build a rich order
     const dishRes = await pool.request().query(`
-      SELECT TOP 5 DishId, Name
+      SELECT TOP 10 DishId, Name
       FROM DishMaster
-      WHERE Name IN ('spcl mutton kebab', 'Bru', 'Mini Idly')
+      WHERE IsActive = 1
     `);
-    console.log("Dishes found:", dishRes.recordset);
+    console.log("Active dishes found in DB:", dishRes.recordset.length);
 
-    const sentItems = dishRes.recordset.map(r => ({
-      id: r.DishId,
-      name: r.Name,
-      qty: 1,
-      price: 10
-    }));
+    if (dishRes.recordset.length === 0) {
+      console.warn("No active dishes found to print.");
+      process.exit(1);
+    }
 
-    // Let's resolve kitchen details manually like backend does but with fix
+    const testDishes = dishRes.recordset;
+
+    // Build a large set of items representing various configurations
+    const sentItems = [];
+
+    testDishes.forEach((dish, index) => {
+      const item = {
+        id: dish.DishId,
+        name: dish.Name,
+        qty: (index % 3) + 1,
+        price: 15.00
+      };
+
+      // Add Modifiers to some items
+      if (index % 2 === 0) {
+        item.modifiers = [
+          { ModifierName: "Extra Cheese" },
+          { ModifierName: "Spicy Add-on Option" }
+        ];
+      }
+
+      // Add Combos to some items
+      if (index % 3 === 0) {
+        item.comboSelections = [
+          {
+            groupName: "Main Course Choice",
+            items: [
+              { name: "Combo Portion Fried Rice" },
+              { name: "Combo Portion Noodles" }
+            ]
+          },
+          {
+            groupName: "Dessert Choice",
+            items: [
+              { name: "Vanilla Ice Cream" }
+            ]
+          }
+        ];
+      }
+
+      // Add Notes/Song Names/Takeaway flags
+      if (index === 0) {
+        item.note = "Please make this item extremely mild spicy";
+        item.isTakeaway = true;
+      }
+      if (index === 1) {
+        item.songName = "Sweet Melody Tribute Track";
+      }
+
+      sentItems.push(item);
+    });
+
+    // Resolve kitchen details for each dish exactly as backend does
     const dishIds = sentItems.map(item => item.id);
     if (dishIds.length > 0) {
       try {
@@ -42,7 +92,7 @@ async function run() {
             ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
             WHERE dish.DishId IN (${dishIds.map(id => `'${id}'`).join(",")})
           `);
-        console.log("Resolved kitchen info from DB:");
+        console.log("Resolved kitchen details from DB:");
         console.table(kitchenRes.recordset);
 
         const kitchenMap = {};
@@ -55,7 +105,11 @@ async function run() {
           if (kInfo) {
             item.KitchenTypeCode = kInfo.KitchenTypeCode;
             item.KitchenTypeName = kInfo.KitchenTypeName;
-            item.PrinterIP = kInfo.PrinterIP;
+            item.PrinterIP = kInfo.PrinterIP || '192.168.0.200'; // Fallback to main test printer IP
+          } else {
+            item.KitchenTypeCode = '2';
+            item.KitchenTypeName = 'Indian';
+            item.PrinterIP = '192.168.0.200';
           }
         });
       } catch (err) {
@@ -63,18 +117,18 @@ async function run() {
       }
     }
 
-    console.log("Items before queuing:", sentItems);
+    console.log(`Queuing print jobs for ${sentItems.length} items...`);
 
     await queueQRPrintJobs(pool, sql, {
-      orderId: "TEST-ORDER-123",
-      tableNo: "1",
+      orderId: "TEST-LARGE-ORDER-999",
+      tableNo: "12",
       sentItems,
       isAdditional: false
     });
 
-    console.log("Queue complete!");
+    console.log("Print queue task completed successfully!");
   } catch (err) {
-    console.error("Runner failed:", err);
+    console.error("Test runner failed:", err);
   }
   process.exit(0);
 }
