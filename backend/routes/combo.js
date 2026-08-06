@@ -178,7 +178,7 @@ router.get("/config/:DishId", async (req, res) => {
       LEFT JOIN CategoryKitchenType ckt WITH (NOLOCK) ON dgm.CategoryId = ckt.CategoryId
       LEFT JOIN (
         SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
-        FROM PrintMaster WITH (NOLOCK) WHERE IsActive = 1 AND PrinterType = 2
+        FROM PrintMaster WITH (NOLOCK) WHERE IsActive = 1 AND IsEnabled = 1 AND PrinterType = 2
       ) pm ON CAST(ckt.KitchenTypeCode AS INT) = pm.KitchenTypeValue AND pm.rn = 1
       WHERE m.ComboGroupId IN (${groupIds})
         AND m.IsActive = 1

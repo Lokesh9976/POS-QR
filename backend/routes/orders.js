@@ -1205,7 +1205,7 @@ router.post("/send", async (req, res) => {
             LEFT JOIN CategoryKitchenType ckt ON dgm.CategoryId = ckt.CategoryId
             LEFT JOIN (
               SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
-              FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
+              FROM PrintMaster WHERE IsActive = 1 AND IsEnabled = 1 AND PrinterType = 2
             ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
             WHERE (RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM((SELECT TOP 1 TableNumber FROM TableMaster WHERE TableNumber = @tableNo OR (TRY_CAST(@tableNo AS UNIQUEIDENTIFIER) IS NOT NULL AND TableId = TRY_CAST(@tableNo AS UNIQUEIDENTIFIER)))))
               OR RTRIM(LTRIM(h.Tableno)) = RTRIM(LTRIM(@tableNo))) 
@@ -1236,7 +1236,7 @@ router.post("/send", async (req, res) => {
               LEFT JOIN CategoryKitchenType ckt ON dgm.CategoryId = ckt.CategoryId
               LEFT JOIN (
                 SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
-                FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
+                FROM PrintMaster WHERE IsActive = 1 AND IsEnabled = 1 AND PrinterType = 2
               ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
               WHERE dish.DishId IN (${dishIds.map(id => `'${id}'`).join(",")})
             `);
@@ -1565,7 +1565,7 @@ router.get("/cart/:tableId", async (req, res) => {
         LEFT JOIN CategoryKitchenType ckt ON dgm.CategoryId = ckt.CategoryId
         LEFT JOIN (
           SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
-          FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
+          FROM PrintMaster WHERE IsActive = 1 AND IsEnabled = 1 AND PrinterType = 2
         ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
         WHERE 
           (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)
@@ -2159,7 +2159,7 @@ router.get("/active-kitchen", async (req, res) => {
       LEFT JOIN CategoryKitchenType ckt ON dgm.CategoryId = ckt.CategoryId
       LEFT JOIN (
         SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn
-        FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
+        FROM PrintMaster WHERE IsActive = 1 AND IsEnabled = 1 AND PrinterType = 2
       ) pm ON CAST(ckt.KitchenTypeCode AS VARCHAR(50)) = CAST(pm.KitchenTypeValue AS VARCHAR(50)) AND pm.rn = 1
       LEFT JOIN TableMaster tm ON h.Tableno = tm.TableNumber
       WHERE (h.isOrderClosed = 0 OR h.isOrderClosed IS NULL)

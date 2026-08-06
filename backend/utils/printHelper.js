@@ -253,7 +253,7 @@ async function queueQRPrintJobs(pool, sql, opts) {
           FROM PrintMaster
           WHERE PrinterType = 2
             AND CAST(KitchenTypeValue AS VARCHAR(50)) = CAST(@KTV AS VARCHAR(50))
-            AND IsActive = 1
+            AND IsActive = 1 AND IsEnabled = 1
             AND (PrinterIP IS NOT NULL AND PrinterIP <> '' OR PrinterPath IS NOT NULL AND PrinterPath <> '')
         `);
       if (printerRes.recordset.length > 0) {

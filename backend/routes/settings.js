@@ -232,7 +232,7 @@ router.get("/kitchen-printers", async (req, res) => {
 
     // 4. Fetch all printers from PrintMaster
     const printersResult = await pool.request().query(`
-      SELECT PrinterId, KitchenTypeValue, KitchenTypeName, PrinterPath, PrinterType, IsActive 
+      SELECT PrinterId, KitchenTypeValue, KitchenTypeName, PrinterPath, PrinterType, IsActive, IsEnabled 
       FROM PrintMaster
     `);
     const allPrinters = printersResult.recordset;
@@ -244,7 +244,8 @@ router.get("/kitchen-printers", async (req, res) => {
     if (cashierPrinter) {
       responsePrinters.push({
         ...cashierPrinter,
-        IsActive: cashierPrinter.IsActive === true || cashierPrinter.IsActive === 1 ? 1 : 0
+        IsActive: cashierPrinter.IsActive === true || cashierPrinter.IsActive === 1 ? 1 : 0,
+        IsEnabled: cashierPrinter.IsEnabled === undefined || cashierPrinter.IsEnabled === null || cashierPrinter.IsEnabled === true || cashierPrinter.IsEnabled === 1 ? 1 : 0
       });
     }
 
@@ -253,7 +254,8 @@ router.get("/kitchen-printers", async (req, res) => {
     if (takeawayPrinter) {
       responsePrinters.push({
         ...takeawayPrinter,
-        IsActive: takeawayPrinter.IsActive === true || takeawayPrinter.IsActive === 1 ? 1 : 0
+        IsActive: takeawayPrinter.IsActive === true || takeawayPrinter.IsActive === 1 ? 1 : 0,
+        IsEnabled: takeawayPrinter.IsEnabled === undefined || takeawayPrinter.IsEnabled === null || takeawayPrinter.IsEnabled === true || takeawayPrinter.IsEnabled === 1 ? 1 : 0
       });
     }
 
@@ -262,7 +264,8 @@ router.get("/kitchen-printers", async (req, res) => {
     if (kdsPrinter) {
       responsePrinters.push({
         ...kdsPrinter,
-        IsActive: kdsPrinter.IsActive === true || kdsPrinter.IsActive === 1 ? 1 : 0
+        IsActive: kdsPrinter.IsActive === true || kdsPrinter.IsActive === 1 ? 1 : 0,
+        IsEnabled: kdsPrinter.IsEnabled === undefined || kdsPrinter.IsEnabled === null || kdsPrinter.IsEnabled === true || kdsPrinter.IsEnabled === 1 ? 1 : 0
       });
     }
 
@@ -284,7 +287,8 @@ router.get("/kitchen-printers", async (req, res) => {
           KitchenTypeName: cat.KitchenTypeName,
           PrinterPath: match.PrinterPath,
           PrinterType: 2,
-          IsActive: match.IsActive === true || match.IsActive === 1 ? 1 : 0
+          IsActive: match.IsActive === true || match.IsActive === 1 ? 1 : 0,
+          IsEnabled: match.IsEnabled === undefined || match.IsEnabled === null || match.IsEnabled === true || match.IsEnabled === 1 ? 1 : 0
         });
       } else {
         // Virtual record for missing printer
@@ -294,7 +298,8 @@ router.get("/kitchen-printers", async (req, res) => {
           KitchenTypeName: cat.KitchenTypeName,
           PrinterPath: "",
           PrinterType: 2,
-          IsActive: 1
+          IsActive: 1,
+          IsEnabled: 1
         });
       }
     }
@@ -308,7 +313,7 @@ router.get("/kitchen-printers", async (req, res) => {
 // 🔹 UPDATE Kitchen Printers
 router.post("/kitchen-printers/update", async (req, res) => {
   try {
-    const { printers } = req.body; // Array of { id, ip, type, name, printerId, isActive }
+    const { printers } = req.body; // Array of { id, ip, type, name, printerId, isActive, isEnabled }
     const pool = await poolPromise;
 
     for (const printer of printers) {
@@ -316,6 +321,7 @@ router.post("/kitchen-printers/update", async (req, res) => {
       const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(targetId));
       const printerIp = printer.ip || "";
       const isActiveValue = printer.isActive === 0 || printer.isActive === false ? 0 : 1;
+      const isEnabledValue = printer.isEnabled === 0 || printer.isEnabled === false ? 0 : 1;
 
       if (printer.type === 2) {
         // Kitchen printer: update ALL rows matching this KitchenTypeValue to keep duplicate rows in sync
@@ -325,9 +331,10 @@ router.post("/kitchen-printers/update", async (req, res) => {
           .input("ip", sql.NVarChar, printerIp)
           .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
           .input("isActive", sql.Bit, isActiveValue)
+          .input("isEnabled", sql.Bit, isEnabledValue)
           .query(`
             UPDATE PrintMaster 
-            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive
+            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive, IsEnabled = @isEnabled
             WHERE KitchenTypeValue = @code AND PrinterType = 2
           `);
       } else if (isGuid) {
@@ -337,56 +344,20 @@ router.post("/kitchen-printers/update", async (req, res) => {
           .input("ip", sql.NVarChar, printerIp)
           .input("name", sql.NVarChar, printer.name || "Printer")
           .input("isActive", sql.Bit, isActiveValue)
+          .input("isEnabled", sql.Bit, isEnabledValue)
           .query(`
             UPDATE PrintMaster 
-            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive
+            SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive, IsEnabled = @isEnabled
             WHERE PrinterId = @printerId
           `);
-      } else if (printer.type === 2) {
-        // Kitchen printer by KitchenTypeValue: check if existing row exists
-        const codeVal = parseInt(printer.id);
-        const existingCheck = await pool.request()
-          .input("code", sql.Int, isNaN(codeVal) ? 0 : codeVal)
-          .query("SELECT TOP 1 PrinterId FROM PrintMaster WHERE KitchenTypeValue = @code AND PrinterType = 2");
-
-        if (existingCheck.recordset.length > 0) {
-          await pool.request()
-            .input("code", sql.Int, isNaN(codeVal) ? 0 : codeVal)
-            .input("ip", sql.NVarChar, printerIp)
-            .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
-            .input("isActive", sql.Bit, isActiveValue)
-            .query(`
-              UPDATE PrintMaster 
-              SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive
-              WHERE KitchenTypeValue = @code AND PrinterType = 2
-            `);
-        } else {
-          // New insert
-          await pool.request()
-            .input("name", sql.NVarChar, printer.name || "Kitchen Printer")
-            .input("ip", sql.NVarChar, printerIp || "192.168.0.20")
-            .input("code", sql.Int, isNaN(codeVal) ? 0 : codeVal)
-            .input("isActive", sql.Bit, isActiveValue)
-            .query(`
-              INSERT INTO PrintMaster (
-                PrinterId, PrinterName, PrinterPath, PrinterIP, 
-                PrinterType, PrintSection, KitchenTypeName, 
-                KitchenTypeValue, IsActive, PrintCopy
-              )
-              VALUES (
-                NEWID(), @name, @ip, @ip, 
-                2, 1, @name, 
-                @code, @isActive, 1
-              )
-            `);
-        }
       } else {
         // Cashier or Takeaway fallback by type
         await pool.request()
           .input("ip", sql.NVarChar, printerIp)
           .input("type", sql.Int, printer.type)
           .input("isActive", sql.Bit, isActiveValue)
-          .query("UPDATE PrintMaster SET PrinterPath = @ip, PrinterIP = @ip, IsActive = @isActive WHERE PrinterType = @type");
+          .input("isEnabled", sql.Bit, isEnabledValue)
+          .query("UPDATE PrintMaster SET PrinterPath = @ip, PrinterIP = @ip, IsActive = @isActive, IsEnabled = @isEnabled WHERE PrinterType = @type");
       }
 
       // Sync to CompanySettings table if it's the Cashier printer

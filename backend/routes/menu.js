@@ -134,7 +134,7 @@ router.get("/dishes/all", async (req, res) => {
       LEFT JOIN CategoryKitchenType ckt ON dgm.CategoryId = ckt.CategoryId
       LEFT JOIN (
         SELECT *, ROW_NUMBER() OVER(PARTITION BY KitchenTypeValue ORDER BY PrinterId) as rn 
-        FROM PrintMaster WHERE IsActive = 1 AND PrinterType = 2
+        FROM PrintMaster WHERE IsActive = 1 AND IsEnabled = 1 AND PrinterType = 2
       ) pm ON CAST(ckt.KitchenTypeCode AS INT) = pm.KitchenTypeValue AND pm.rn = 1
       WHERE d.IsActive = 1 ORDER BY ISNULL(d.SordCode, 0) ASC, d.Name ASC
     `);

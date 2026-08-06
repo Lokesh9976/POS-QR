@@ -240,7 +240,8 @@ export default function CompanySettingsScreen() {
           type: 2,
           name: kp.KitchenTypeName,
           printerId: kp.PrinterId,
-          isActive: kp.IsActive !== undefined ? (kp.IsActive === 1 || kp.IsActive === true ? 1 : 0) : 1
+          isActive: kp.IsActive !== undefined ? (kp.IsActive === 1 || kp.IsActive === true ? 1 : 0) : 1,
+          isEnabled: kp.IsEnabled !== undefined ? (kp.IsEnabled === 1 || kp.IsEnabled === true ? 1 : 0) : 1
         }))
       ];
 
@@ -740,20 +741,20 @@ export default function CompanySettingsScreen() {
                     
                     <TouchableOpacity
                       onPress={() => {
-                        const currentActive = printer.IsActive === undefined ? true : (printer.IsActive === 1 || printer.IsActive === true);
+                        const currentEnabled = printer.IsEnabled === undefined ? true : (printer.IsEnabled === 1 || printer.IsEnabled === true);
                         const updated = kitchenPrinters.map((kp, idx) => 
-                          idx === index ? { ...kp, IsActive: currentActive ? 0 : 1 } : kp
+                          idx === index ? { ...kp, IsEnabled: currentEnabled ? 0 : 1 } : kp
                         );
                         setKitchenPrinters(updated);
                       }}
-                      style={[styles.toggleSwitch, (printer.IsActive === undefined || printer.IsActive === 1 || printer.IsActive === true) && styles.toggleSwitchOn]}
+                      style={[styles.toggleSwitch, (printer.IsEnabled === undefined || printer.IsEnabled === 1 || printer.IsEnabled === true) && styles.toggleSwitchOn]}
                       activeOpacity={0.8}
                     >
-                      <View style={[styles.toggleThumb, (printer.IsActive === undefined || printer.IsActive === 1 || printer.IsActive === true) && styles.toggleThumbOn]} />
+                      <View style={[styles.toggleThumb, (printer.IsEnabled === undefined || printer.IsEnabled === 1 || printer.IsEnabled === true) && styles.toggleThumbOn]} />
                     </TouchableOpacity>
                   </View>
                   <TextInput 
-                    style={[styles.input, (printer.IsActive === 0 || printer.IsActive === false) && { opacity: 0.5 }]}
+                    style={[styles.input, (printer.IsEnabled === 0 || printer.IsEnabled === false) && { opacity: 0.5 }]}
                     value={printer.PrinterPath || ''}
                     onChangeText={(val) => {
                       const updated = [...kitchenPrinters];
@@ -763,7 +764,7 @@ export default function CompanySettingsScreen() {
                     placeholder="e.g. 192.168.1.101"
                     placeholderTextColor={Theme.textMuted}
                     keyboardType="numeric"
-                    editable={printer.IsActive === undefined || printer.IsActive === 1 || printer.IsActive === true}
+                    editable={printer.IsEnabled === undefined || printer.IsEnabled === 1 || printer.IsEnabled === true}
                   />
                 </View>
               ))
