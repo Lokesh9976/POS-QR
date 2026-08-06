@@ -247,12 +247,12 @@ async function queueQRPrintJobs(pool, sql, opts) {
     let printerName = '';
     try {
       const printerRes = await pool.request()
-        .input('KTV', sql.NVarChar(50), kCode)
+        .input('KTN', sql.NVarChar(100), group.kitchenName || '')
         .query(`
           SELECT TOP 1 ISNULL(NULLIF(PrinterIP, ''), NULLIF(PrinterPath, '')) as PrinterIP, PrinterName
           FROM PrintMaster
           WHERE PrinterType = 2
-            AND CAST(KitchenTypeValue AS VARCHAR(50)) = CAST(@KTV AS VARCHAR(50))
+            AND LOWER(TRIM(KitchenTypeName)) = LOWER(TRIM(@KTN))
             AND IsActive = 1 AND IsEnabled = 1
             AND (PrinterIP IS NOT NULL AND PrinterIP <> '' OR PrinterPath IS NOT NULL AND PrinterPath <> '')
         `);
@@ -261,7 +261,7 @@ async function queueQRPrintJobs(pool, sql, opts) {
         printerName = printerRes.recordset[0].PrinterName;
       }
     } catch (err) {
-      console.warn(`[PrintHelper] Could not resolve kitchen printer for KTV=${kCode}:`, err.message);
+      console.warn(`[PrintHelper] Could not resolve kitchen printer for name=${group.kitchenName}:`, err.message);
     }
 
     if (!printerIp) {
