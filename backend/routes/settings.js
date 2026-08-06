@@ -324,7 +324,7 @@ router.post("/kitchen-printers/update", async (req, res) => {
       const isEnabledValue = printer.isEnabled === 0 || printer.isEnabled === false ? 0 : 1;
 
       if (printer.type === 2) {
-        // Kitchen printer: update ALL rows matching this KitchenTypeValue to keep duplicate rows in sync
+        // Kitchen printer: update ALL rows matching this KitchenTypeValue OR KitchenTypeName to keep duplicates in sync
         const codeVal = parseInt(printer.id);
         await pool.request()
           .input("code", sql.Int, isNaN(codeVal) ? 0 : codeVal)
@@ -335,7 +335,7 @@ router.post("/kitchen-printers/update", async (req, res) => {
           .query(`
             UPDATE PrintMaster 
             SET PrinterPath = @ip, PrinterIP = @ip, KitchenTypeName = @name, PrinterName = @name, IsActive = @isActive, IsEnabled = @isEnabled
-            WHERE KitchenTypeValue = @code AND PrinterType = 2
+            WHERE (KitchenTypeValue = @code OR KitchenTypeName = @name) AND PrinterType = 2
           `);
       } else if (isGuid) {
         // Existing printer by GUID: update path, name, and active status
