@@ -603,6 +603,11 @@ class UniversalPrinter {
     type: "NEW" | "ADDITIONAL" | "REPRINT" | "KDS_PRINT" = "NEW",
     printerIpOverride?: string,
   ): Promise<boolean> {
+    if (type !== "KDS_PRINT" && (!printerIpOverride || String(printerIpOverride).trim() === "")) {
+      console.log(`🖨️ [UniversalPrinter] Skipping KOT print for "${orderData.kitchenName || 'Unknown Kitchen'}" - IP is empty/disabled.`);
+      return true;
+    }
+
     if (Platform.OS === "web") {
       try {
         const isOnline = await this.isBridgeOnline();
@@ -2123,6 +2128,10 @@ class UniversalPrinter {
 
       for (const [kCode, groupItems] of Object.entries(kitchenGroups)) {
         const printerIp = groupItems[0].PrinterIP;
+        if (!printerIp || String(printerIp).trim() === "") {
+          console.log(`🖨️ [UniversalPrinter] Skipping routing KOT for kitchen "${groupItems[0].KitchenTypeName || kCode}" - IP is empty/disabled.`);
+          continue;
+        }
         const kotData = {
           orderId,
           orderNo: orderId,
@@ -2133,7 +2142,7 @@ class UniversalPrinter {
             groupItems[0].KitchenTypeName || (kCode === "0" ? "KITCHEN" : kCode),
         };
         try {
-          console.log(`🖨️ [UniversalPrinter] Printing KOT for kitchen ${kotData.kitchenName} to ${printerIp || 'Default'}`);
+          console.log(`🖨️ [UniversalPrinter] Printing KOT for kitchen ${kotData.kitchenName} to ${printerIp}`);
           await this.printKOT(
             kotData,
             "SYSTEM",
